@@ -1,7 +1,10 @@
-# ccws - Claude Code Workspace CLI Specification
+# ccws - Claude Code Workspace CLI Specification [SUPERSEDED]
+
+> **Note**: This specification has been superseded by the simplified MVP version.  
+> See: `feat-ccws-cli-workspace-generator-v2.md`
 
 ## Status
-Draft
+Superseded - See V2
 
 ## Authors
 Claude Assistant - August 26, 2025
