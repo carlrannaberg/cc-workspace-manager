@@ -1,0 +1,48 @@
+{
+  "name": "cc-workspace-manager",
+  "version": "1.0.0",
+  "description": "A new repository created with GitHub CLI.",
+  "main": "index.js",
+  "bin": {
+    "ccws": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "dev": "node --enable-source-maps dist/index.js",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carlrannaberg/cc-workspace-manager.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/carlrannaberg/cc-workspace-manager/issues"
+  },
+  "homepage": "https://github.com/carlrannaberg/cc-workspace-manager#readme",
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^22.18.0",
+    "@types/tmp": "^0.2.6",
+    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/ui": "^3.2.4",
+    "tmp": "^0.2.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.8.4",
+    "execa": "^9.6.0",
+    "fs-extra": "^11.3.1",
+    "picocolors": "^1.1.1"
+  },
+  "optionalDependencies": {
+    "@agent-io/stream": "^0.2.0"
+  }
+}
