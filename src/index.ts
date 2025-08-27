@@ -5,7 +5,14 @@ import { createWorkspace, generateClaudeMd } from './workspace.js';
 import { generateRootPackageJson } from './package.js';
 import { ui } from './ui.js';
 import fs from 'fs-extra';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import type { RepoPick, RepoMounted } from './types.js';
+
+// Get package.json for version info
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8'));
 
 /**
  * Display repository selection summary to user
@@ -44,6 +51,39 @@ function displaySuccessMessage(wsDir: string, mounted: RepoMounted[]): void {
 }
 
 /**
+ * Display help information
+ */
+function showHelp(): void {
+  console.log(`
+ccws - Claude Code Workspace Generator v${pkg.version}
+
+Usage:
+  ccws                  Start interactive workspace creation
+  ccws --help, -h       Show this help message
+  ccws --version, -v    Show version information
+
+Environment Variables:
+  CLAUDE_CLI_ARGS       Custom flags for Claude CLI invocation
+
+Requirements:
+  - macOS (uses cp -al, rsync)
+  - Git 2.20+ (worktree support)
+  - Node.js 18+ (ES modules)
+  - Claude CLI installed and configured
+
+Documentation:
+  https://github.com/carlrannaberg/cc-workspace-manager
+`);
+}
+
+/**
+ * Display version information
+ */
+function showVersion(): void {
+  console.log(`ccws v${pkg.version}`);
+}
+
+/**
  * Handle all types of errors in a consistent manner
  */
 function handleError(error: unknown): never {
@@ -58,6 +98,28 @@ function handleError(error: unknown): never {
 }
 
 async function main() {
+  // Handle command line arguments
+  const args = process.argv.slice(2);
+  
+  if (args.includes('--help') || args.includes('-h')) {
+    showHelp();
+    process.exit(0);
+  }
+  
+  if (args.includes('--version') || args.includes('-v')) {
+    showVersion();
+    process.exit(0);
+  }
+  
+  // If unknown arguments are provided, show help
+  const validArgs = ['--help', '-h', '--version', '-v'];
+  const unknownArgs = args.filter(arg => !validArgs.includes(arg));
+  if (unknownArgs.length > 0) {
+    console.error(`Unknown argument(s): ${unknownArgs.join(', ')}`);
+    showHelp();
+    process.exit(1);
+  }
+  
   let workspaceCreated = false;
   let wsDir = '';
   let mounted: RepoMounted[] = [];

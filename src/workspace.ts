@@ -1,5 +1,6 @@
 import { resolve, join } from 'path';
-import { readJson, writeFile } from 'fs-extra';
+import fs from 'fs-extra';
+const { readJson, writeFile } = fs;
 import { execa } from 'execa';
 import { ensureWorkspaceSkeleton, primeNodeModules, copyEnvFiles } from './fsops.js';
 import { addWorktree } from './git.js';
