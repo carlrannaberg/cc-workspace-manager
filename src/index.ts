@@ -4,6 +4,7 @@ import { getUserSelections, handlePromptError } from './prompts.js';
 import { createWorkspace, generateClaudeMd } from './workspace.js';
 import { generateRootPackageJson } from './package.js';
 import { ui } from './ui.js';
+import fs from 'fs-extra';
 import type { RepoPick, RepoMounted } from './types.js';
 
 /**
@@ -57,6 +58,10 @@ function handleError(error: unknown): never {
 }
 
 async function main() {
+  let workspaceCreated = false;
+  let wsDir = '';
+  let mounted: RepoMounted[] = [];
+  
   try {
     // Start with CLI header
     ui.header('🚀 Claude Code Workspace Generator\n');
@@ -66,16 +71,43 @@ async function main() {
     displayRepositorySelection(repoPicks);
     
     // Phase 2: Create workspace and mount repositories
-    const { wsDir, mounted } = await createWorkspace(repoPicks);
+    const result = await createWorkspace(repoPicks);
+    wsDir = result.wsDir;
+    mounted = result.mounted;
+    workspaceCreated = true;
     
-    // Phase 3: Generate configuration files
-    await generateRootPackageJson(wsDir, mounted);
-    await generateClaudeMd(wsDir, mounted);
+    // Phase 3: Generate configuration files (non-critical - workspace still usable if these fail)
+    try {
+      await generateRootPackageJson(wsDir, mounted);
+    } catch (error) {
+      ui.warning(`Failed to generate package.json: ${error instanceof Error ? error.message : String(error)}`);
+      ui.info('You can manually create package.json later if needed');
+    }
+    
+    try {
+      await generateClaudeMd(wsDir, mounted);
+    } catch (error) {
+      ui.warning(`Failed to generate CLAUDE.md: ${error instanceof Error ? error.message : String(error)}`);
+      ui.info('You can manually create CLAUDE.md later if needed');
+    }
     
     // Phase 4: Show success and next steps
     displaySuccessMessage(wsDir, mounted);
     
   } catch (error) {
+    // Clean up partial workspace on critical failures
+    if (workspaceCreated && wsDir && mounted.length === 0) {
+      try {
+        ui.info('Cleaning up empty workspace...');
+        await fs.rm(wsDir, { recursive: true, force: true });
+        ui.info(`Cleaned up workspace: ${wsDir}`);
+      } catch (cleanupError) {
+        ui.warning(`Failed to cleanup workspace: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+      }
+    } else if (workspaceCreated && wsDir && mounted.length > 0) {
+      ui.info(`Partial workspace preserved at: ${wsDir} (${mounted.length} repo(s) mounted)`);
+    }
+    
     handleError(error);
   }
 }

@@ -1,0 +1,844 @@
+{
+  "metadata": {
+    "version": 1,
+    "root": "/Users/carl/Development/agents/cc-workspace-manager",
+    "createdAt": "2025-08-26T21:45:00.600Z",
+    "updatedAt": "2025-08-26T21:45:00.600Z",
+    "totalFiles": 14
+  },
+  "tree": {
+    "name": "cc-workspace-manager",
+    "type": "dir",
+    "children": [
+      {
+        "name": "src",
+        "type": "dir",
+        "children": [
+          {
+            "name": "fsops.ts",
+            "type": "file"
+          },
+          {
+            "name": "git.ts",
+            "type": "file"
+          },
+          {
+            "name": "index.ts",
+            "type": "file"
+          },
+          {
+            "name": "package.ts",
+            "type": "file"
+          },
+          {
+            "name": "pm.ts",
+            "type": "file"
+          },
+          {
+            "name": "prompts.ts",
+            "type": "file"
+          },
+          {
+            "name": "types.ts",
+            "type": "file"
+          },
+          {
+            "name": "ui.ts",
+            "type": "file"
+          },
+          {
+            "name": "workspace.ts",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "name": "tests",
+        "type": "dir",
+        "children": [
+          {
+            "name": "fsops.test.ts",
+            "type": "file"
+          },
+          {
+            "name": "git.test.ts",
+            "type": "file"
+          },
+          {
+            "name": "integration.test.ts",
+            "type": "file"
+          },
+          {
+            "name": "pm.test.ts",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "name": "vitest.config.ts",
+        "type": "file"
+      }
+    ]
+  },
+  "nodes": [
+    "src/fsops.ts",
+    "src/git.ts",
+    "src/index.ts",
+    "src/package.ts",
+    "src/pm.ts",
+    "src/prompts.ts",
+    "src/types.ts",
+    "src/ui.ts",
+    "src/workspace.ts",
+    "tests/fsops.test.ts",
+    "tests/git.test.ts",
+    "tests/integration.test.ts",
+    "tests/pm.test.ts",
+    "vitest.config.ts"
+  ],
+  "edges": [
+    {
+      "from": "src/index.ts",
+      "to": "src/package.ts"
+    },
+    {
+      "from": "src/index.ts",
+      "to": "src/prompts.ts"
+    },
+    {
+      "from": "src/index.ts",
+      "to": "src/types.ts"
+    },
+    {
+      "from": "src/index.ts",
+      "to": "src/ui.ts"
+    },
+    {
+      "from": "src/index.ts",
+      "to": "src/workspace.ts"
+    },
+    {
+      "from": "src/package.ts",
+      "to": "src/pm.ts"
+    },
+    {
+      "from": "src/package.ts",
+      "to": "src/types.ts"
+    },
+    {
+      "from": "src/package.ts",
+      "to": "src/ui.ts"
+    },
+    {
+      "from": "src/prompts.ts",
+      "to": "src/git.ts"
+    },
+    {
+      "from": "src/prompts.ts",
+      "to": "src/types.ts"
+    },
+    {
+      "from": "src/prompts.ts",
+      "to": "src/ui.ts"
+    },
+    {
+      "from": "src/workspace.ts",
+      "to": "src/fsops.ts"
+    },
+    {
+      "from": "src/workspace.ts",
+      "to": "src/git.ts"
+    },
+    {
+      "from": "src/workspace.ts",
+      "to": "src/pm.ts"
+    },
+    {
+      "from": "src/workspace.ts",
+      "to": "src/types.ts"
+    },
+    {
+      "from": "src/workspace.ts",
+      "to": "src/ui.ts"
+    },
+    {
+      "from": "tests/fsops.test.ts",
+      "to": "src/fsops.ts"
+    },
+    {
+      "from": "tests/git.test.ts",
+      "to": "src/git.ts"
+    },
+    {
+      "from": "tests/integration.test.ts",
+      "to": "src/fsops.ts"
+    },
+    {
+      "from": "tests/integration.test.ts",
+      "to": "src/git.ts"
+    },
+    {
+      "from": "tests/integration.test.ts",
+      "to": "src/pm.ts"
+    },
+    {
+      "from": "tests/integration.test.ts",
+      "to": "src/types.ts"
+    },
+    {
+      "from": "tests/integration.test.ts",
+      "to": "src/workspace.ts"
+    },
+    {
+      "from": "tests/pm.test.ts",
+      "to": "src/pm.ts"
+    }
+  ],
+  "files": {
+    "src/fsops.ts": {
+      "imports": [
+        {
+          "from": "execa",
+          "kind": "import"
+        },
+        {
+          "from": "fs",
+          "kind": "import"
+        },
+        {
+          "from": "path",
+          "kind": "import"
+        },
+        {
+          "from": "fs-extra",
+          "kind": "import"
+        }
+      ],
+      "dependencies": [],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "src/git.ts": {
+      "imports": [
+        {
+          "from": "execa",
+          "kind": "import",
+          "imported": [
+            "execa"
+          ]
+        }
+      ],
+      "dependencies": [],
+      "functions": [
+        {
+          "name": "discoverRepos",
+          "params": [
+            {
+              "name": "baseDir",
+              "type": "string"
+            }
+          ],
+          "isAsync": true,
+          "isExported": true,
+          "returnType": "Promise<string[]>"
+        },
+        {
+          "name": "currentBranch",
+          "params": [
+            {
+              "name": "repoPath",
+              "type": "string"
+            }
+          ],
+          "isAsync": true,
+          "isExported": true,
+          "returnType": "Promise<string>"
+        },
+        {
+          "name": "addWorktree",
+          "params": [
+            {
+              "name": "baseRepo",
+              "type": "string"
+            },
+            {
+              "name": "branch",
+              "type": "string"
+            },
+            {
+              "name": "worktreeDir",
+              "type": "string"
+            }
+          ],
+          "isAsync": true,
+          "isExported": true,
+          "returnType": "Promise<void>"
+        }
+      ],
+      "classes": [],
+      "constants": []
+    },
+    "src/index.ts": {
+      "imports": [
+        {
+          "from": "./prompts.js",
+          "kind": "import",
+          "imported": [
+            "getUserSelections",
+            "handlePromptError"
+          ]
+        },
+        {
+          "from": "./workspace.js",
+          "kind": "import",
+          "imported": [
+            "createWorkspace",
+            "generateClaudeMd"
+          ]
+        },
+        {
+          "from": "./package.js",
+          "kind": "import",
+          "imported": [
+            "generateRootPackageJson"
+          ]
+        },
+        {
+          "from": "./ui.js",
+          "kind": "import",
+          "imported": [
+            "ui"
+          ]
+        },
+        {
+          "from": "./types.js",
+          "kind": "import",
+          "imported": [
+            "RepoPick",
+            "RepoMounted"
+          ]
+        }
+      ],
+      "dependencies": [
+        "src/package.ts",
+        "src/prompts.ts",
+        "src/types.ts",
+        "src/ui.ts",
+        "src/workspace.ts"
+      ],
+      "functions": [
+        {
+          "name": "displayRepositorySelection",
+          "params": [
+            {
+              "name": "repoPicks",
+              "type": "RepoPick[]"
+            }
+          ],
+          "isAsync": false,
+          "isExported": false,
+          "returnType": "void"
+        },
+        {
+          "name": "displaySuccessMessage",
+          "params": [
+            {
+              "name": "wsDir",
+              "type": "string"
+            },
+            {
+              "name": "mounted",
+              "type": "RepoMounted[]"
+            }
+          ],
+          "isAsync": false,
+          "isExported": false,
+          "returnType": "void"
+        },
+        {
+          "name": "handleError",
+          "params": [
+            {
+              "name": "error",
+              "type": "unknown"
+            }
+          ],
+          "isAsync": false,
+          "isExported": false,
+          "returnType": "never"
+        },
+        {
+          "name": "main",
+          "params": [],
+          "isAsync": true,
+          "isExported": false
+        }
+      ],
+      "classes": [],
+      "constants": []
+    },
+    "src/package.ts": {
+      "imports": [
+        {
+          "from": "fs-extra",
+          "kind": "import"
+        },
+        {
+          "from": "path",
+          "kind": "import"
+        },
+        {
+          "from": "./pm.js",
+          "kind": "import"
+        },
+        {
+          "from": "./ui.js",
+          "kind": "import"
+        },
+        {
+          "from": "./types.js",
+          "kind": "import"
+        }
+      ],
+      "dependencies": [
+        "src/pm.ts",
+        "src/types.ts",
+        "src/ui.ts"
+      ],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "src/pm.ts": {
+      "imports": [
+        {
+          "from": "fs",
+          "kind": "import",
+          "imported": [
+            "existsSync",
+            "readFileSync"
+          ]
+        },
+        {
+          "from": "path",
+          "kind": "import",
+          "imported": [
+            "join"
+          ]
+        }
+      ],
+      "dependencies": [],
+      "functions": [
+        {
+          "name": "detectPM",
+          "params": [
+            {
+              "name": "dir",
+              "type": "string"
+            }
+          ],
+          "isAsync": false,
+          "isExported": true,
+          "returnType": "'npm' | 'yarn' | 'pnpm'"
+        },
+        {
+          "name": "pmRun",
+          "params": [
+            {
+              "name": "pm",
+              "type": "'npm' | 'yarn' | 'pnpm'"
+            },
+            {
+              "name": "alias",
+              "type": "string"
+            },
+            {
+              "name": "script",
+              "type": "string"
+            }
+          ],
+          "isAsync": false,
+          "isExported": true,
+          "returnType": "string"
+        }
+      ],
+      "classes": [],
+      "constants": []
+    },
+    "src/prompts.ts": {
+      "imports": [
+        {
+          "from": "@inquirer/prompts",
+          "kind": "import",
+          "imported": [
+            "input",
+            "checkbox",
+            "confirm"
+          ]
+        },
+        {
+          "from": "path",
+          "kind": "import",
+          "imported": [
+            "basename"
+          ]
+        },
+        {
+          "from": "./git.js",
+          "kind": "import",
+          "imported": [
+            "discoverRepos",
+            "currentBranch"
+          ]
+        },
+        {
+          "from": "./types.js",
+          "kind": "import",
+          "imported": [
+            "RepoPick"
+          ]
+        },
+        {
+          "from": "./ui.js",
+          "kind": "import",
+          "imported": [
+            "ui"
+          ]
+        }
+      ],
+      "dependencies": [
+        "src/git.ts",
+        "src/types.ts",
+        "src/ui.ts"
+      ],
+      "functions": [
+        {
+          "name": "getUserSelections",
+          "params": [],
+          "isAsync": true,
+          "isExported": true,
+          "returnType": "Promise<RepoPick[]>"
+        },
+        {
+          "name": "handlePromptError",
+          "params": [
+            {
+              "name": "error",
+              "type": "Error"
+            }
+          ],
+          "isAsync": false,
+          "isExported": true,
+          "returnType": "void"
+        }
+      ],
+      "classes": [
+        {
+          "name": "UserCancelledError",
+          "isExported": true,
+          "methods": [],
+          "properties": [],
+          "extends": "Error"
+        }
+      ],
+      "constants": []
+    },
+    "src/types.ts": {
+      "imports": [],
+      "dependencies": [],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "src/ui.ts": {
+      "imports": [
+        {
+          "from": "picocolors",
+          "kind": "import",
+          "isDefault": true
+        }
+      ],
+      "dependencies": [],
+      "functions": [],
+      "classes": [],
+      "constants": [
+        {
+          "name": "ui",
+          "initKind": "unknown",
+          "isExported": true
+        }
+      ]
+    },
+    "src/workspace.ts": {
+      "imports": [
+        {
+          "from": "path",
+          "kind": "import"
+        },
+        {
+          "from": "fs-extra",
+          "kind": "import"
+        },
+        {
+          "from": "execa",
+          "kind": "import"
+        },
+        {
+          "from": "./fsops.js",
+          "kind": "import"
+        },
+        {
+          "from": "./git.js",
+          "kind": "import"
+        },
+        {
+          "from": "./pm.js",
+          "kind": "import"
+        },
+        {
+          "from": "./ui.js",
+          "kind": "import"
+        },
+        {
+          "from": "./types.js",
+          "kind": "import"
+        },
+        {
+          "from": "@agent-io/stream",
+          "kind": "dynamic-import"
+        }
+      ],
+      "dependencies": [
+        "src/fsops.ts",
+        "src/git.ts",
+        "src/pm.ts",
+        "src/types.ts",
+        "src/ui.ts"
+      ],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "tests/fsops.test.ts": {
+      "imports": [
+        {
+          "from": "vitest",
+          "kind": "import"
+        },
+        {
+          "from": "../src/fsops.js",
+          "kind": "import"
+        },
+        {
+          "from": "fs",
+          "kind": "import"
+        },
+        {
+          "from": "path",
+          "kind": "import"
+        },
+        {
+          "from": "os",
+          "kind": "import"
+        },
+        {
+          "from": "execa",
+          "kind": "import"
+        }
+      ],
+      "dependencies": [
+        "src/fsops.ts"
+      ],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "tests/git.test.ts": {
+      "imports": [
+        {
+          "from": "vitest",
+          "kind": "import",
+          "imported": [
+            "describe",
+            "test",
+            "expect",
+            "beforeEach",
+            "afterEach"
+          ]
+        },
+        {
+          "from": "../src/git.js",
+          "kind": "import",
+          "imported": [
+            "currentBranch",
+            "discoverRepos",
+            "addWorktree"
+          ]
+        },
+        {
+          "from": "fs",
+          "kind": "import",
+          "imported": [
+            "mkdtempSync",
+            "rmSync",
+            "writeFileSync",
+            "mkdirSync"
+          ]
+        },
+        {
+          "from": "path",
+          "kind": "import",
+          "imported": [
+            "join"
+          ]
+        },
+        {
+          "from": "os",
+          "kind": "import",
+          "imported": [
+            "tmpdir"
+          ]
+        },
+        {
+          "from": "execa",
+          "kind": "import",
+          "imported": [
+            "execa"
+          ]
+        }
+      ],
+      "dependencies": [
+        "src/git.ts"
+      ],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "tests/integration.test.ts": {
+      "imports": [
+        {
+          "from": "vitest",
+          "kind": "import"
+        },
+        {
+          "from": "fs",
+          "kind": "import"
+        },
+        {
+          "from": "path",
+          "kind": "import"
+        },
+        {
+          "from": "os",
+          "kind": "import"
+        },
+        {
+          "from": "execa",
+          "kind": "import"
+        },
+        {
+          "from": "fs-extra",
+          "kind": "import"
+        },
+        {
+          "from": "../src/git.js",
+          "kind": "import"
+        },
+        {
+          "from": "../src/workspace.js",
+          "kind": "import"
+        },
+        {
+          "from": "../src/fsops.js",
+          "kind": "import"
+        },
+        {
+          "from": "../src/pm.js",
+          "kind": "import"
+        },
+        {
+          "from": "../src/types.js",
+          "kind": "import"
+        }
+      ],
+      "dependencies": [
+        "src/fsops.ts",
+        "src/git.ts",
+        "src/pm.ts",
+        "src/types.ts",
+        "src/workspace.ts"
+      ],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "tests/pm.test.ts": {
+      "imports": [
+        {
+          "from": "vitest",
+          "kind": "import",
+          "imported": [
+            "describe",
+            "test",
+            "expect",
+            "beforeEach",
+            "afterEach"
+          ]
+        },
+        {
+          "from": "../src/pm.js",
+          "kind": "import",
+          "imported": [
+            "detectPM",
+            "pmRun"
+          ]
+        },
+        {
+          "from": "fs",
+          "kind": "import",
+          "imported": [
+            "mkdtempSync",
+            "writeFileSync",
+            "rmSync"
+          ]
+        },
+        {
+          "from": "path",
+          "kind": "import",
+          "imported": [
+            "join"
+          ]
+        },
+        {
+          "from": "os",
+          "kind": "import",
+          "imported": [
+            "tmpdir"
+          ]
+        }
+      ],
+      "dependencies": [
+        "src/pm.ts"
+      ],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "vitest.config.ts": {
+      "imports": [
+        {
+          "from": "vitest/config",
+          "kind": "import",
+          "imported": [
+            "defineConfig"
+          ]
+        }
+      ],
+      "dependencies": [],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    }
+  }
+}

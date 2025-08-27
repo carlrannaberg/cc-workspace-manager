@@ -2,6 +2,7 @@ import { execa } from 'execa';
 import { existsSync } from 'fs';
 import { join, basename } from 'path';
 import fs from 'fs-extra';
+import { ui } from './ui.js';
 
 export async function ensureWorkspaceSkeleton(wsDir: string): Promise<void> {
   await fs.ensureDir(join(wsDir, 'repos'));
@@ -14,22 +15,33 @@ export async function ensureWorkspaceSkeleton(wsDir: string): Promise<void> {
 export async function primeNodeModules(
   src: string, 
   dst: string
-): Promise<void> {
+): Promise<{ method: 'hardlink' | 'rsync' | 'skipped'; error?: string }> {
   const srcPath = join(src, 'node_modules');
   const dstPath = join(dst, 'node_modules');
   
   // Skip if source doesn't exist
-  if (!existsSync(srcPath)) return;
+  if (!existsSync(srcPath)) {
+    return { method: 'skipped' };
+  }
   
   // Try hardlink first (fast on same filesystem)
   try {
     await execa('cp', ['-al', srcPath, dstPath]);
-    return;
-  } catch {
-    // Hardlink failed, try rsync
+    return { method: 'hardlink' };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    
+    // Check for specific hardlink failures and provide helpful context
+    if (errorMsg.includes('Operation not permitted') || errorMsg.includes('cross-device')) {
+      ui.warning(`Hardlink failed (cross-filesystem detected), falling back to rsync...`);
+    } else if (errorMsg.includes('File exists')) {
+      ui.warning(`Target node_modules exists, falling back to rsync...`);
+    } else {
+      ui.warning(`Hardlink failed: ${errorMsg}, falling back to rsync...`);
+    }
   }
   
-  // Fallback to rsync
+  // Fallback to rsync with better error reporting
   try {
     await execa('rsync', [
       '-a', 
@@ -37,8 +49,12 @@ export async function primeNodeModules(
       `${srcPath}/`, 
       `${dstPath}/`
     ]);
+    return { method: 'rsync' };
   } catch (error) {
-    console.warn(`Failed to prime node_modules for ${dst}:`, error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    ui.error(`Failed to prime node_modules for ${basename(dst)}: ${errorMsg}`);
+    ui.info('You may need to run "npm install" manually in this repository');
+    return { method: 'skipped', error: errorMsg };
   }
 }
 

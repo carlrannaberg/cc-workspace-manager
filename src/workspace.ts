@@ -45,7 +45,20 @@ export async function createWorkspace(repoPicks: RepoPick[]): Promise<{
       
       // Prime with dependencies (node_modules)
       ui.info(`${progress} Priming ${pick.alias} with dependencies...`);
-      await primeNodeModules(pick.basePath, worktreePath);
+      const primingResult = await primeNodeModules(pick.basePath, worktreePath);
+      
+      // Provide feedback on priming result
+      if (primingResult.method === 'hardlink') {
+        ui.info(`${progress} Dependencies primed via hardlink (fast)`);
+      } else if (primingResult.method === 'rsync') {
+        ui.info(`${progress} Dependencies primed via rsync (slower)`);
+      } else if (primingResult.method === 'skipped') {
+        if (primingResult.error) {
+          ui.warning(`${progress} Dependency priming failed for ${pick.alias}`);
+        } else {
+          ui.info(`${progress} No node_modules found in source repository`);
+        }
+      }
       
       // Copy environment files
       ui.info(`${progress} Copying environment files for ${pick.alias}...`);
@@ -149,15 +162,14 @@ Keep it under 100 lines.`;
       }
     });
     
-    // Try to use @agent-io/stream if available
+    // Try to use @agent-io/stream if available with safe dynamic import
     let streamHandler: { push: (data: string) => void } | null = null;
     try {
-      // Dynamic import with proper error handling for optional dependency
-      // Use Function constructor to avoid TypeScript module resolution at compile time
-      const dynamicImport = new Function('specifier', 'return import(specifier)');
-      const agentIoModule = await dynamicImport('@agent-io/stream').catch(() => null);
+      // Safe dynamic import for optional dependency - use string concatenation to avoid TypeScript static analysis
+      const moduleName = '@agent-io' + '/' + 'stream';
+      const agentIoModule = await import(moduleName).catch(() => null);
       
-      if (agentIoModule && typeof agentIoModule.createStreamRenderer === 'function') {
+      if (agentIoModule?.createStreamRenderer && typeof agentIoModule.createStreamRenderer === 'function') {
         const renderer = agentIoModule.createStreamRenderer({
           onText: (t: string) => process.stdout.write(t)
         });
@@ -169,15 +181,15 @@ Keep it under 100 lines.`;
           });
           ui.info('Using @agent-io/stream for enhanced output rendering');
         } else {
-          throw new Error('Invalid renderer object');
+          throw new Error('Invalid renderer object from @agent-io/stream');
         }
       } else {
-        throw new Error('Agent IO stream not available');
+        throw new Error('@agent-io/stream createStreamRenderer not available');
       }
-    } catch {
+    } catch (error) {
       // Fallback: pipe directly to stdout
       child.stdout?.pipe(process.stdout);
-      ui.info('Using direct output streaming (fallback mode)');
+      ui.info(`Using direct output streaming (fallback mode): ${error instanceof Error ? error.message : 'Stream module unavailable'}`);
     }
     
     // Send prompt to Claude CLI
