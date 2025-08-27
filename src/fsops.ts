@@ -1,7 +1,8 @@
 import { execa } from 'execa';
-import { existsSync } from 'fs';
-import { join, basename } from 'path';
+import { existsSync, statSync } from 'fs';
+import { join, basename, resolve } from 'path';
 import fs from 'fs-extra';
+import { readdir } from 'fs/promises';
 import { ui } from './ui.js';
 
 export async function ensureWorkspaceSkeleton(wsDir: string): Promise<void> {
@@ -16,8 +17,17 @@ export async function primeNodeModules(
   src: string, 
   dst: string
 ): Promise<{ method: 'hardlink' | 'rsync' | 'skipped'; error?: string }> {
-  const srcPath = join(src, 'node_modules');
-  const dstPath = join(dst, 'node_modules');
+  // Validate paths to prevent injection
+  const sanitizedSrc = resolve(src);
+  const sanitizedDst = resolve(dst);
+  
+  // Security checks
+  if (sanitizedSrc.includes('..') || sanitizedDst.includes('..') || src.includes('..') || dst.includes('..')) {
+    return { method: 'skipped', error: 'Path traversal detected' };
+  }
+  
+  const srcPath = join(sanitizedSrc, 'node_modules');
+  const dstPath = join(sanitizedDst, 'node_modules');
   
   // Skip if source doesn't exist
   if (!existsSync(srcPath)) {
@@ -26,7 +36,9 @@ export async function primeNodeModules(
   
   // Try hardlink first (fast on same filesystem)
   try {
-    await execa('cp', ['-al', srcPath, dstPath]);
+    await execa('cp', ['-al', srcPath, dstPath], {
+      shell: false // Explicitly disable shell interpretation
+    });
     return { method: 'hardlink' };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -48,7 +60,9 @@ export async function primeNodeModules(
       '--delete',
       `${srcPath}/`, 
       `${dstPath}/`
-    ]);
+    ], {
+      shell: false // Explicitly disable shell interpretation
+    });
     return { method: 'rsync' };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -63,22 +77,51 @@ export async function copyEnvFiles(
   dst: string
 ): Promise<void> {
   try {
-    // Find all .env* files in source
-    const { stdout } = await execa('find', [
-      src, 
-      '-maxdepth', '1', 
-      '-name', '.env*', 
-      '-type', 'f'
-    ]);
+    // Validate and resolve paths
+    const srcPath = resolve(src);
+    const dstPath = resolve(dst);
     
-    const files = stdout.split('\n').filter(Boolean);
-    
-    // Copy each file
-    for (const file of files) {
-      const destFile = join(dst, basename(file));
-      await fs.copyFile(file, destFile);
+    // Security validations
+    if (!existsSync(srcPath) || !statSync(srcPath).isDirectory()) {
+      throw new Error('Invalid source directory');
     }
+    
+    if (!existsSync(dstPath) || !statSync(dstPath).isDirectory()) {
+      throw new Error('Invalid destination directory');
+    }
+    
+    // Prevent path traversal
+    if (srcPath.includes('..') || dstPath.includes('..') || src.includes('..') || dst.includes('..')) {
+      throw new Error('Path traversal detected');
+    }
+    
+    // Use fs.readdir instead of shell command for safety
+    const files = await readdir(srcPath);
+    const envFiles = files.filter(f => f.startsWith('.env') && !f.includes('/'));
+    
+    // Copy each file with validation
+    await Promise.all(
+      envFiles.map(async (file) => {
+        const srcFile = join(srcPath, file);
+        const dstFile = join(dstPath, file);
+        
+        try {
+          // Ensure we're not following symlinks for security
+          const stat = await fs.lstat(srcFile);
+          if (stat.isFile() && !stat.isSymbolicLink()) {
+            await fs.copyFile(srcFile, dstFile);
+            ui.info(`Copied environment file: ${file}`);
+          }
+        } catch (fileError) {
+          ui.warning(`Failed to copy ${file}: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+        }
+      })
+    );
   } catch (error) {
-    console.warn(`Failed to copy env files:`, error);
+    // Sanitize error messages to avoid exposing paths
+    const safeError = error instanceof Error 
+      ? error.message.replace(/\/.*?\//g, '/***/')
+      : 'Unknown error';
+    ui.warning(`Failed to copy env files: ${safeError}`);
   }
 }
