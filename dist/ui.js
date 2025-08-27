@@ -14,6 +14,29 @@ export const ui = {
     // Special formatting
     highlight: (text) => pc.bold(text),
     dim: (text) => pc.gray(text),
+    // Progress indicators
+    progress: (current, total, message) => {
+        const percentage = Math.round((current / total) * 100);
+        const progressBar = '█'.repeat(Math.floor(percentage / 5)) + '░'.repeat(20 - Math.floor(percentage / 5));
+        console.log(pc.blue(`[${progressBar}] ${percentage}% ${message} (${current}/${total})`));
+    },
+    spinner: (message) => {
+        const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+        let frameIndex = 0;
+        return {
+            start: () => {
+                const interval = setInterval(() => {
+                    process.stdout.write(`\r${pc.blue(frames[frameIndex])} ${message}`);
+                    frameIndex = (frameIndex + 1) % frames.length;
+                }, 80);
+                return interval;
+            },
+            stop: (interval, finalMessage) => {
+                clearInterval(interval);
+                process.stdout.write(`\r${finalMessage ? pc.green('✓ ' + finalMessage) : pc.green('✓ ' + message)}\n`);
+            }
+        };
+    },
     // Common message patterns
     searching: (directory) => console.log(pc.gray(`Searching for git repositories in: ${directory}\n`)),
     foundRepos: (count) => console.log(pc.green(`✅ Found ${count} git repository(ies)\n`)),

@@ -87,12 +87,21 @@ function showVersion(): void {
  * Handle all types of errors in a consistent manner
  */
 function handleError(error: unknown): never {
+  // Check if we are in test environment
+  const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+  
   if (error instanceof Error) {
     handlePromptError(error);
     // handlePromptError should exit, but ensure we never return
+    if (isTest) {
+      throw new Error('Process exited with code 1');
+    }
     process.exit(1);
   } else {
     ui.error(`❌ Unexpected error: ${error}`);
+    if (isTest) {
+      throw new Error('Process exited with code 1');
+    }
     process.exit(1);
   }
 }
@@ -177,5 +186,7 @@ async function main() {
 // Export main function for testing
 export { main };
 
-// Run if executed directly
-main();
+// Run if executed directly (but not in tests)
+if (process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') {
+  main();
+}

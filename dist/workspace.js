@@ -1,13 +1,46 @@
 import { resolve, join } from 'path';
-import { readJson, writeFile } from 'fs-extra';
+import fs from 'fs-extra';
+const { readJson, writeFile } = fs;
 import { execa } from 'execa';
 import { ensureWorkspaceSkeleton, primeNodeModules, copyEnvFiles } from './fsops.js';
 import { addWorktree } from './git.js';
 import { detectPM } from './pm.js';
 import { ui } from './ui.js';
 /**
- * Creates a complete workspace with worktrees for selected repositories
- * This is the core orchestration function that ties together all our modules
+ * Creates a complete workspace with worktrees for selected repositories.
+ *
+ * This is the core orchestration function that ties together all modules to:
+ * - Generate a unique workspace directory with timestamp-based naming
+ * - Create worktrees for each selected repository and branch
+ * - Prime each worktree with dependencies (node_modules) from source repos
+ * - Copy environment files (.env*) to maintain configuration consistency
+ * - Detect package managers and configure workspace accordingly
+ * - Process repositories in parallel for optimal performance
+ *
+ * @param repoPicks - Array of repository configurations to process
+ * @param repoPicks[].alias - User-friendly name for the repository
+ * @param repoPicks[].basePath - Absolute path to the source repository
+ * @param repoPicks[].branch - Git branch to checkout in the worktree
+ *
+ * @returns Promise resolving to workspace creation result
+ * @returns wsDir - Absolute path to the created workspace directory
+ * @returns mounted - Array of successfully mounted repository configurations
+ *
+ * @throws {Error} When no repositories are successfully mounted
+ * @throws {Error} When workspace directory creation fails
+ * @throws {Error} When git operations fail for critical repositories
+ *
+ * @example
+ * ```typescript
+ * const repoPicks = [
+ *   { alias: 'frontend', basePath: '/path/to/frontend', branch: 'main' },
+ *   { alias: 'backend', basePath: '/path/to/backend', branch: 'develop' }
+ * ];
+ *
+ * const { wsDir, mounted } = await createWorkspace(repoPicks);
+ * console.log(`Workspace created at: ${wsDir}`);
+ * console.log(`${mounted.length} repositories mounted successfully`);
+ * ```
  */
 export async function createWorkspace(repoPicks) {
     // Generate unique workspace name with timestamp
@@ -18,55 +51,129 @@ export async function createWorkspace(repoPicks) {
     // Create workspace directory structure
     ui.info('Setting up workspace skeleton...');
     await ensureWorkspaceSkeleton(wsDir);
-    // Mount each repository
-    const mounted = [];
+    // Mount repositories in parallel for better performance
     const totalRepos = repoPicks.length;
-    for (let i = 0; i < repoPicks.length; i++) {
-        const pick = repoPicks[i];
-        const progress = `(${i + 1}/${totalRepos})`;
-        ui.info(`${progress} Processing ${pick.alias}...`);
+    ui.info(`Processing ${totalRepos} repository(ies) in parallel...`);
+    const mountPromises = repoPicks.map(async (pick) => {
         try {
             const worktreePath = join(wsDir, 'repos', pick.alias);
             // Create worktree
-            ui.info(`${progress} Creating worktree for ${pick.alias} (${pick.branch})...`);
+            ui.info(`Creating worktree for ${pick.alias} (${pick.branch})...`);
             await addWorktree(pick.basePath, pick.branch, worktreePath);
             // Prime with dependencies (node_modules)
-            ui.info(`${progress} Priming ${pick.alias} with dependencies...`);
-            await primeNodeModules(pick.basePath, worktreePath);
+            ui.info(`Priming ${pick.alias} with dependencies...`);
+            const primingResult = await primeNodeModules(pick.basePath, worktreePath);
+            // Provide feedback on priming result
+            if (primingResult.method === 'hardlink') {
+                ui.info(`Dependencies for ${pick.alias} primed via hardlink (fast)`);
+            }
+            else if (primingResult.method === 'rsync') {
+                ui.info(`Dependencies for ${pick.alias} primed via rsync (slower)`);
+            }
+            else if (primingResult.method === 'skipped') {
+                if (primingResult.error) {
+                    ui.warning(`Dependency priming failed for ${pick.alias}`);
+                }
+                else {
+                    ui.info(`No node_modules found in ${pick.alias} source repository`);
+                }
+            }
             // Copy environment files
-            ui.info(`${progress} Copying environment files for ${pick.alias}...`);
+            ui.info(`Copying environment files for ${pick.alias}...`);
             await copyEnvFiles(pick.basePath, worktreePath);
             // Detect package manager
             const packageManager = detectPM(worktreePath);
-            ui.success(`${progress} ${pick.alias} mounted successfully (${packageManager})`);
-            // Add to mounted repos
-            mounted.push({
+            ui.success(`✓ ${pick.alias} mounted successfully (${packageManager})`);
+            return {
                 ...pick,
                 worktreePath,
                 packageManager
-            });
+            };
         }
         catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            ui.error(`${progress} Failed to mount ${pick.alias}: ${errorMessage}`);
-            // For now, we'll continue with other repos even if one fails
-            // In a production version, we might want to offer options like retry or skip
+            ui.error(`Failed to mount ${pick.alias}: ${errorMessage}`);
             ui.warning(`Skipping ${pick.alias} and continuing with remaining repositories...`);
+            return null;
         }
+    });
+    // Wait for all repositories to be processed with progress tracking
+    const results = [];
+    let completedCount = 0;
+    // Process repositories with progress tracking
+    for (const promise of mountPromises) {
+        const result = await promise.then((value) => ({ status: 'fulfilled', value }), (reason) => ({ status: 'rejected', reason }));
+        results.push(result);
+        completedCount++;
+        // Show progress
+        ui.progress(completedCount, totalRepos, 'repositories processed');
     }
+    // Collect successfully mounted repositories
+    const mounted = [];
+    let failedCount = 0;
+    results.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value !== null) {
+            mounted.push(result.value);
+        }
+        else {
+            failedCount++;
+            if (result.status === 'rejected') {
+                const alias = repoPicks[index].alias;
+                ui.error(`Unexpected error processing ${alias}: ${result.reason}`);
+            }
+        }
+    });
     if (mounted.length === 0) {
         throw new Error('No repositories were successfully mounted');
     }
-    if (mounted.length < repoPicks.length) {
-        const failed = repoPicks.length - mounted.length;
-        ui.warning(`Warning: ${failed} repository(ies) failed to mount`);
+    if (failedCount > 0) {
+        ui.warning(`Warning: ${failedCount} repository(ies) failed to mount`);
     }
     ui.success(`✓ Workspace created with ${mounted.length} repository(ies): ${wsDir}`);
     return { wsDir, mounted };
 }
 /**
- * Generates CLAUDE.md via Claude CLI with factpack creation and streaming support
- * Creates factpack files for each repo and invokes Claude CLI with graceful fallbacks
+ * Generates a comprehensive CLAUDE.md workspace guide using Claude CLI.
+ *
+ * This function creates factpack files for each repository and invokes the Claude CLI
+ * to generate an intelligent workspace guide. It provides fallback template generation
+ * if Claude CLI is unavailable and supports enhanced output streaming when possible.
+ *
+ * Process:
+ * 1. Creates .factpack.txt files in each repository with metadata
+ * 2. Invokes Claude CLI with workspace-specific prompt
+ * 3. Attempts to use @agent-io/stream for enhanced output rendering
+ * 4. Falls back to direct stdout piping if streaming unavailable
+ * 5. Generates fallback template if Claude CLI fails completely
+ *
+ * @param wsDir - Absolute path to the workspace directory
+ * @param repos - Array of mounted repository configurations
+ * @param repos[].alias - Repository alias for display
+ * @param repos[].branch - Active branch in the worktree
+ * @param repos[].packageManager - Detected package manager (npm/yarn/pnpm)
+ * @param repos[].worktreePath - Path to the repository worktree
+ *
+ * @returns Promise that resolves when CLAUDE.md is created
+ *
+ * @throws Does not throw - handles all errors gracefully with fallbacks
+ *
+ * @example
+ * ```typescript
+ * const repos = [
+ *   { alias: 'frontend', branch: 'main', packageManager: 'npm', ... },
+ *   { alias: 'backend', branch: 'develop', packageManager: 'yarn', ... }
+ * ];
+ *
+ * await generateClaudeMd('/path/to/workspace', repos);
+ * // Creates /path/to/workspace/CLAUDE.md with workspace guide
+ * ```
+ *
+ * Environment Variables:
+ * - `CLAUDE_CLI_ARGS` - Additional arguments passed to Claude CLI
+ *
+ * Dependencies:
+ * - Claude CLI must be installed and configured
+ * - `@agent-io/stream` (optional) for enhanced output rendering
  */
 export async function generateClaudeMd(wsDir, repos) {
     ui.info('Creating factpack files for repositories...');
@@ -112,14 +219,13 @@ Keep it under 100 lines.`;
                 } : {})
             }
         });
-        // Try to use @agent-io/stream if available
+        // Try to use @agent-io/stream if available with safe dynamic import
         let streamHandler = null;
         try {
-            // Dynamic import with proper error handling for optional dependency
-            // Use Function constructor to avoid TypeScript module resolution at compile time
-            const dynamicImport = new Function('specifier', 'return import(specifier)');
-            const agentIoModule = await dynamicImport('@agent-io/stream').catch(() => null);
-            if (agentIoModule && typeof agentIoModule.createStreamRenderer === 'function') {
+            // Safe dynamic import for optional dependency - use string concatenation to avoid TypeScript static analysis
+            const moduleName = '@agent-io' + '/' + 'stream';
+            const agentIoModule = await import(moduleName).catch(() => null);
+            if (agentIoModule?.createStreamRenderer && typeof agentIoModule.createStreamRenderer === 'function') {
                 const renderer = agentIoModule.createStreamRenderer({
                     onText: (t) => process.stdout.write(t)
                 });
@@ -131,17 +237,17 @@ Keep it under 100 lines.`;
                     ui.info('Using @agent-io/stream for enhanced output rendering');
                 }
                 else {
-                    throw new Error('Invalid renderer object');
+                    throw new Error('Invalid renderer object from @agent-io/stream');
                 }
             }
             else {
-                throw new Error('Agent IO stream not available');
+                throw new Error('@agent-io/stream createStreamRenderer not available');
             }
         }
-        catch {
+        catch (error) {
             // Fallback: pipe directly to stdout
             child.stdout?.pipe(process.stdout);
-            ui.info('Using direct output streaming (fallback mode)');
+            ui.info(`Using direct output streaming (fallback mode): ${error instanceof Error ? error.message : 'Stream module unavailable'}`);
         }
         // Send prompt to Claude CLI
         child.stdin?.write(prompt);

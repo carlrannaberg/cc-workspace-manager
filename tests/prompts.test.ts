@@ -268,7 +268,7 @@ describe('User Prompts', () => {
       handlePromptError(new UserCancelledError('Test cancellation'));
       
       expect(exitSpy).toHaveBeenCalledWith(0);
-      expect(ui.ui.warning).toHaveBeenCalledWith('⚠️  Operation cancelled by user');
+      expect(ui.ui.userCancelled).toHaveBeenCalledOnce();
     });
     
     test('handles no repositories found error with suggestions', () => {
@@ -286,8 +286,7 @@ describe('User Prompts', () => {
       handlePromptError(new Error('No repositories selected'));
       
       expect(exitSpy).toHaveBeenCalledWith(1);
-      expect(ui.ui.error).toHaveBeenCalledWith('❌ Setup failed: No repositories selected');
-      expect(ui.ui.warning).toHaveBeenCalledWith('💡 You need to select at least one repository to continue');
+      expect(ui.ui.noReposSelected).toHaveBeenCalledOnce();
     });
     
     test('handles generic errors', () => {

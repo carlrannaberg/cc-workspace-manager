@@ -110,8 +110,23 @@ export async function createWorkspace(repoPicks: RepoPick[]): Promise<{
     }
   });
   
-  // Wait for all repositories to be processed
-  const results = await Promise.allSettled(mountPromises);
+  // Wait for all repositories to be processed with progress tracking
+  const results: PromiseSettledResult<RepoMounted | null>[] = [];
+  let completedCount = 0;
+  
+  // Process repositories with progress tracking
+  for (const promise of mountPromises) {
+    const result = await promise.then(
+      (value): PromiseSettledResult<RepoMounted | null> => ({ status: 'fulfilled', value }),
+      (reason): PromiseSettledResult<RepoMounted | null> => ({ status: 'rejected', reason })
+    );
+    
+    results.push(result);
+    completedCount++;
+    
+    // Show progress
+    ui.progress(completedCount, totalRepos, 'repositories processed');
+  }
   
   // Collect successfully mounted repositories
   const mounted: RepoMounted[] = [];

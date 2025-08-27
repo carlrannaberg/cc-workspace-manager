@@ -3,6 +3,19 @@ import { resolve } from 'path';
 import { existsSync, statSync } from 'fs';
 import { readdir } from 'fs/promises';
 import { join } from 'path';
+import { ui } from './ui.js';
+
+/**
+ * Simple in-memory cache for repository discovery results
+ */
+interface CacheEntry {
+  data: string[];
+  timestamp: number;
+  ttl: number;
+}
+
+const repoCache = new Map<string, CacheEntry>();
+const DEFAULT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Safely discovers git repositories within a specified base directory.
@@ -46,6 +59,14 @@ export async function discoverRepos(baseDir: string): Promise<string[]> {
     // Validate and sanitize input path
     const sanitizedPath = resolve(baseDir);
     
+    // Check cache first
+    const cacheKey = sanitizedPath;
+    const cached = repoCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < cached.ttl) {
+      ui.info(`Using cached repository list for ${sanitizedPath} (${cached.data.length} repos)`);
+      return cached.data;
+    }
+    
     // Security checks
     if (!existsSync(sanitizedPath)) {
       throw new Error('Directory does not exist');
@@ -63,13 +84,21 @@ export async function discoverRepos(baseDir: string): Promise<string[]> {
     // Use native Node.js API for safer directory scanning
     const repos = new Set<string>();
     const visited = new Set<string>();
+    let totalDirectories = 0;
+    let scannedDirectories = 0;
+    
+    // Start spinner for discovery process
+    const spinner = ui.spinner('Discovering git repositories...');
+    const spinnerInterval = spinner.start();
     
     async function scanDir(dir: string, depth: number): Promise<void> {
       if (depth > 3 || visited.has(dir)) return;
       visited.add(dir);
+      scannedDirectories++;
       
       try {
         const entries = await readdir(dir, { withFileTypes: true });
+        totalDirectories += entries.filter(e => e.isDirectory() && !e.name.startsWith('.')).length;
         
         // Check for .git directory first (early exit optimization)
         if (entries.some(e => e.isDirectory() && e.name === '.git')) {
@@ -89,7 +118,20 @@ export async function discoverRepos(baseDir: string): Promise<string[]> {
     }
     
     await scanDir(sanitizedPath, 1);
-    return Array.from(repos).sort();
+    
+    // Stop spinner and show results
+    spinner.stop(spinnerInterval, `Found ${repos.size} repositories in ${scannedDirectories} directories`);
+    
+    const results = Array.from(repos).sort();
+    
+    // Cache the results
+    repoCache.set(cacheKey, {
+      data: results,
+      timestamp: Date.now(),
+      ttl: DEFAULT_CACHE_TTL
+    });
+    
+    return results;
   } catch (error) {
     console.error('Failed to discover repos:', error);
     return [];
