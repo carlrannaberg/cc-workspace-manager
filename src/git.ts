@@ -4,6 +4,43 @@ import { existsSync, statSync } from 'fs';
 import { readdir } from 'fs/promises';
 import { join } from 'path';
 
+/**
+ * Safely discovers git repositories within a specified base directory.
+ * 
+ * This function performs recursive directory scanning to find all git repositories
+ * within the specified base directory. It includes comprehensive security measures
+ * to prevent directory traversal attacks and handles various git repository formats
+ * including regular repositories and worktrees.
+ * 
+ * Security Features:
+ * - Path sanitization and validation
+ * - Directory traversal attack prevention  
+ * - Symlink traversal protection
+ * - Depth limiting to prevent infinite recursion
+ * - Permission error handling
+ * 
+ * @param baseDir - Base directory path to search for repositories
+ * 
+ * @returns Promise resolving to array of absolute repository paths
+ * 
+ * @throws {Error} When directory doesn't exist or isn't accessible
+ * @throws {Error} When path traversal attack is detected
+ * @throws {Error} When provided path is not a directory
+ * 
+ * @example
+ * ```typescript
+ * // Discover repositories in a projects directory
+ * const repos = await discoverRepos('/Users/dev/projects');
+ * console.log(`Found ${repos.length} repositories:`);
+ * repos.forEach(repo => console.log(`- ${repo}`));
+ * 
+ * // Output:
+ * // Found 3 repositories:
+ * // - /Users/dev/projects/frontend
+ * // - /Users/dev/projects/backend  
+ * // - /Users/dev/projects/shared/utils
+ * ```
+ */
 export async function discoverRepos(baseDir: string): Promise<string[]> {
   try {
     // Validate and sanitize input path

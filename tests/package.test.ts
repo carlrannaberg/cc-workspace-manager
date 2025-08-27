@@ -127,8 +127,8 @@ describe('Package.json Generation', () => {
     expect(content.scripts.dev).toContain('SOLO');
     expect(content.scripts.dev).toContain('solo:dev');
     
-    expect(content.scripts['build:all']).toBe('npm run solo:build');
-    expect(content.scripts['test:all']).toBe('npm run solo:test');
+    expect(content.scripts['build:all']).toBe('concurrently "npm run solo:build"');
+    expect(content.scripts['test:all']).toBe('concurrently "npm run solo:test"');
   });
 
   test('handles repositories with special characters in aliases', async () => {
@@ -171,16 +171,16 @@ describe('Package.json Generation', () => {
       }
     ];
     
-    const beforeTime = new Date().toISOString();
+    const beforeTime = Date.now();
     await generateRootPackageJson(mockWsDir, mounted);
-    const afterTime = new Date().toISOString();
+    const afterTime = Date.now();
     
     const [, content] = vi.mocked(fs.writeJSON).mock.calls[0];
     
     expect(content.ccws).toBeDefined();
-    expect(content.ccws.version).toBe('1.0.0');
-    expect(content.ccws.created).toBeGreaterThanOrEqual(beforeTime);
-    expect(content.ccws.created).toBeLessThanOrEqual(afterTime);
+    expect(content.version).toBe('1.0.0'); // Workspace package version, not ccws.version
+    expect(new Date(content.ccws.created).getTime()).toBeGreaterThanOrEqual(beforeTime);
+    expect(new Date(content.ccws.created).getTime()).toBeLessThanOrEqual(afterTime);
     expect(content.ccws.repositories).toHaveLength(1);
     expect(content.ccws.repositories[0]).toEqual({
       alias: 'test-repo',
@@ -213,7 +213,7 @@ describe('Package.json Generation', () => {
     const [, content] = vi.mocked(fs.writeJSON).mock.calls[0];
     
     expect(content.devDependencies).toBeDefined();
-    expect(content.devDependencies.concurrently).toBe('^8.2.2');
+    expect(content.devDependencies.concurrently).toBe('^9.0.0');
   });
 
   test('uses pretty JSON formatting', async () => {

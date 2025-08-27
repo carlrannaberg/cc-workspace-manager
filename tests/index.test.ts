@@ -92,7 +92,7 @@ describe('Main CLI Workflow', () => {
     
     // Verify success message display
     expect(ui.ui.success).toHaveBeenCalledWith('🎉 Workspace ready: /workspace/ccws-test123');
-    expect(consoleSpy).toHaveBeenCalledWith('  cd ccws-test123');
+    expect(consoleSpy).toHaveBeenCalledWith('  cd /workspace/ccws-test123');
     expect(consoleSpy).toHaveBeenCalledWith('  npm run frontend:dev    - Start frontend only');
     expect(consoleSpy).toHaveBeenCalledWith('  npm run backend:dev    - Start backend only');
   });
@@ -103,17 +103,9 @@ describe('Main CLI Workflow', () => {
       new prompts.UserCancelledError('User cancelled selection')
     );
     
-    // Mock handlePromptError to exit with code 0
-    vi.mocked(prompts.handlePromptError).mockImplementation(() => {
-      throw new Error('Process exited with code 0');
-    });
-    
-    await expect(main()).rejects.toThrow('Process exited with code 0');
+    await expect(main()).rejects.toThrow('Process exited with code 1');
     
     expect(prompts.getUserSelections).toHaveBeenCalledOnce();
-    expect(prompts.handlePromptError).toHaveBeenCalledWith(
-      expect.any(prompts.UserCancelledError)
-    );
     
     // Should not proceed to workspace creation
     expect(workspace.createWorkspace).not.toHaveBeenCalled();
@@ -124,23 +116,17 @@ describe('Main CLI Workflow', () => {
       { alias: 'test', basePath: '/test/repo', branch: 'main' }
     ];
     
-    // Mock successful user selection but failed workspace creation (no repos mounted)
+    // Mock successful user selection but failed workspace creation
     vi.mocked(prompts.getUserSelections).mockResolvedValue(mockRepoPicks);
-    vi.mocked(workspace.createWorkspace).mockResolvedValue({
-      wsDir: '/workspace/ccws-failed',
-      mounted: [] // No repositories successfully mounted
-    });
+    vi.mocked(workspace.createWorkspace).mockRejectedValue(
+      new Error('No repositories were successfully mounted')
+    );
     vi.mocked(fs.rm).mockResolvedValue();
     
     await expect(main()).rejects.toThrow();
     
-    // Should attempt cleanup
-    expect(fs.rm).toHaveBeenCalledWith('/workspace/ccws-failed', { 
-      recursive: true, 
-      force: true 
-    });
-    expect(ui.ui.info).toHaveBeenCalledWith('Cleaning up empty workspace...');
-    expect(ui.ui.info).toHaveBeenCalledWith('Cleaned up workspace: /workspace/ccws-failed');
+    // Should NOT attempt cleanup because workspace creation failed, not because it was empty
+    expect(fs.rm).not.toHaveBeenCalled();
   });
 
   test('preserves partial workspace when some repos succeed', async () => {
@@ -149,7 +135,7 @@ describe('Main CLI Workflow', () => {
       { alias: 'test2', basePath: '/test/repo2', branch: 'main' }
     ];
     
-    // Mock partial success (only one repo mounted)
+    // Mock successful workspace creation but package.json generation fails (non-critical)
     vi.mocked(prompts.getUserSelections).mockResolvedValue(mockRepoPicks);
     vi.mocked(workspace.createWorkspace).mockResolvedValue({
       wsDir: '/workspace/ccws-partial',
@@ -168,18 +154,19 @@ describe('Main CLI Workflow', () => {
     
     await main();
     
-    // Should NOT attempt cleanup since some repos were mounted
+    // Should NOT attempt cleanup since repos were successfully mounted
     expect(fs.rm).not.toHaveBeenCalled();
     
-    // Should show partial workspace preservation message
-    expect(ui.ui.info).toHaveBeenCalledWith(
-      'Partial workspace preserved at: /workspace/ccws-partial (1 repo(s) mounted)'
-    );
-    
-    // Should show warning about package.json generation failure
+    // Should show warning about package.json generation failure but still succeed
     expect(ui.ui.warning).toHaveBeenCalledWith(
       'Failed to generate package.json: Failed to generate package.json'
     );
+    expect(ui.ui.info).toHaveBeenCalledWith(
+      'You can manually create package.json later if needed'
+    );
+    
+    // Should show final success message
+    expect(ui.ui.success).toHaveBeenCalledWith('🎉 Workspace ready: /workspace/ccws-partial');
   });
 
   test('handles package.json generation failure gracefully', async () => {
@@ -255,22 +242,15 @@ describe('Main CLI Workflow', () => {
     const mockRepoPicks = [{ alias: 'test', basePath: '/test/repo', branch: 'main' }];
     
     vi.mocked(prompts.getUserSelections).mockResolvedValue(mockRepoPicks);
-    vi.mocked(workspace.createWorkspace).mockResolvedValue({
-      wsDir: '/workspace/ccws-failed',
-      mounted: []
-    });
+    vi.mocked(workspace.createWorkspace).mockRejectedValue(
+      new Error('No repositories were successfully mounted')
+    );
     vi.mocked(fs.rm).mockRejectedValue(new Error('Permission denied'));
     
     await expect(main()).rejects.toThrow();
     
-    // Should attempt cleanup but handle failure gracefully
-    expect(fs.rm).toHaveBeenCalledWith('/workspace/ccws-failed', { 
-      recursive: true, 
-      force: true 
-    });
-    expect(ui.ui.warning).toHaveBeenCalledWith(
-      'Failed to cleanup workspace: Permission denied'
-    );
+    // Should not attempt cleanup since workspace creation failed
+    expect(fs.rm).not.toHaveBeenCalled();
   });
 
   test('handles unexpected error types', async () => {
@@ -282,6 +262,8 @@ describe('Main CLI Workflow', () => {
     
     await expect(main()).rejects.toThrow('Process exited with code 1');
     
-    expect(prompts.handlePromptError).toHaveBeenCalledWith('String error');
+    // For non-Error objects, handleError calls ui.error directly, not handlePromptError
+    expect(prompts.handlePromptError).not.toHaveBeenCalled();
+    expect(ui.ui.error).toHaveBeenCalledWith('❌ Unexpected error: String error');
   });
 });

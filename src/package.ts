@@ -5,7 +5,51 @@ import { ui } from './ui.js';
 import type { RepoMounted } from './types.js';
 
 /**
- * Generates a unified package.json at workspace root with scripts for all mounted repos
+ * Generates a unified package.json at workspace root with orchestration scripts.
+ * 
+ * This function creates a comprehensive package.json file that enables unified
+ * workflow management across all mounted repositories in the workspace. It generates
+ * individual repository scripts and combined orchestration scripts using concurrently
+ * for parallel execution.
+ * 
+ * Generated Script Categories:
+ * - Individual repo scripts: `{alias}:{command}` for each repository
+ * - Combined orchestration: `dev`, `build:all`, `test:all` for all repos
+ * - Package manager awareness: Generates appropriate commands for npm/yarn/pnpm
+ * 
+ * Script Examples:
+ * ```json
+ * {
+ *   "frontend:dev": "npm --prefix ./repos/frontend run dev",
+ *   "backend:dev": "yarn --cwd ./repos/backend dev", 
+ *   "dev": "concurrently -n FRONTEND,BACKEND \"npm run frontend:dev\" \"npm run backend:dev\""
+ * }
+ * ```
+ * 
+ * @param wsDir - Absolute path to workspace directory
+ * @param mounted - Array of successfully mounted repository configurations
+ * @param mounted[].alias - Repository alias (used in script names)
+ * @param mounted[].packageManager - Package manager (npm/yarn/pnpm)
+ * @param mounted[].branch - Active branch (stored in workspace metadata)
+ * @param mounted[].basePath - Original repository path (stored in workspace metadata)
+ * 
+ * @returns Promise that resolves when package.json is written
+ * 
+ * @throws {Error} When workspace directory is not writable
+ * @throws {Error} When package.json generation fails
+ * 
+ * @example
+ * ```typescript
+ * const mounted = [
+ *   { alias: 'frontend', packageManager: 'npm', ... },
+ *   { alias: 'backend', packageManager: 'yarn', ... }
+ * ];
+ * 
+ * await generateRootPackageJson('/path/to/workspace', mounted);
+ * // Creates package.json with 13 scripts (5 per repo + 3 combined)
+ * ```
+ * 
+ * @see {@link pmRun} for package manager command generation
  */
 export async function generateRootPackageJson(
   wsDir: string, 
