@@ -5,6 +5,7 @@ import * as workspace from '../src/workspace.js';
 import * as packageModule from '../src/package.js';
 import * as ui from '../src/ui.js';
 import fs from 'fs-extra';
+import { errorMatchers } from './utils/errorMatchers.js';
 
 // Mock all dependencies
 vi.mock('../src/prompts.js');
@@ -123,7 +124,7 @@ describe('Main CLI Workflow', () => {
     );
     vi.mocked(fs.rm).mockResolvedValue();
     
-    await expect(main()).rejects.toThrow();
+    await expect(main()).rejects.toThrow(errorMatchers.processExit(1));
     
     // Should NOT attempt cleanup because workspace creation failed, not because it was empty
     expect(fs.rm).not.toHaveBeenCalled();
@@ -247,7 +248,7 @@ describe('Main CLI Workflow', () => {
     );
     vi.mocked(fs.rm).mockRejectedValue(new Error('Permission denied'));
     
-    await expect(main()).rejects.toThrow();
+    await expect(main()).rejects.toThrow(errorMatchers.processExit(1));
     
     // Should not attempt cleanup since workspace creation failed
     expect(fs.rm).not.toHaveBeenCalled();

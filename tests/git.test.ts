@@ -1,15 +1,16 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { currentBranch, discoverRepos, addWorktree } from '../src/git.js';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
+import { rmSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { tmpdir } from 'os';
 import { execa } from 'execa';
+import { createTestDir } from './utils/testDir.js';
+import { errorMatchers } from './utils/errorMatchers.js';
 
 describe('Git Operations', () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = mkdtempSync(join(tmpdir(), 'git-test-'));
+    testDir = createTestDir('git-test', expect.getState().currentTestName);
   });
 
   afterEach(() => {
@@ -257,7 +258,7 @@ describe('Git Operations', () => {
       const worktreeDir = join(testDir, 'should-fail-worktree');
       
       await expect(addWorktree(invalidRepo, 'main', worktreeDir))
-        .rejects.toThrow();
+        .rejects.toThrow(errorMatchers.gitError);
     });
 
     test('throws error when worktree directory already exists', async () => {
@@ -265,7 +266,7 @@ describe('Git Operations', () => {
       mkdirSync(worktreeDir);
       
       await expect(addWorktree(baseRepo, 'main', worktreeDir))
-        .rejects.toThrow();
+        .rejects.toThrow(errorMatchers.gitWorktreeConflict);
     });
 
     test('handles branch names with special characters', async () => {

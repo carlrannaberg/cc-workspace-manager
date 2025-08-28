@@ -12,6 +12,8 @@ export default defineConfig({
     hideSkippedTests: process.env.VERBOSE_TESTS !== 'true',
     // Test environment configuration
     environment: 'node',
+    // Increase timeout for integration tests
+    testTimeout: 15000, // 15 seconds for integration tests
     // Coverage configuration
     coverage: {
       reporter: ['text', 'html'],

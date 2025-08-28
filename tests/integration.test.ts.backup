@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'fs';
+import { mkdtempSync, existsSync, writeFileSync, mkdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { execa } from 'execa';
 import { rmSync } from 'fs-extra';
 import { addWorktree } from '../src/git.js';
@@ -8,16 +9,13 @@ import { createWorkspace, generateClaudeMd } from '../src/workspace.js';
 import { ensureWorkspaceSkeleton, primeNodeModules, copyEnvFiles } from '../src/fsops.js';
 import { detectPM } from '../src/pm.js';
 import type { RepoPick, RepoMounted } from '../src/types.js';
-import { createTestDir } from './utils/testDir.js';
-import { createPackageJson, packageFixtures } from './fixtures/packageJsonFixtures.js';
-
 
 describe('Integration Tests - Complete Workspace Generation', () => {
   let testDir: string;
   let cleanupPaths: string[] = [];
   
   beforeAll(() => {
-    testDir = createTestDir('ccws-integration', 'main-suite');
+    testDir = mkdtempSync(join(tmpdir(), 'ccws-integration-'));
     cleanupPaths.push(testDir);
   });
 
@@ -36,17 +34,35 @@ describe('Integration Tests - Complete Workspace Generation', () => {
     let testRepo: string;
 
     beforeEach(async () => {
-      // Create a test git repo with unique naming
-      const currentTest = expect.getState().currentTestName || 'unknown-test';
-      testRepo = createTestDir('test-repo', currentTest);
+      // Create a test git repo
+      testRepo = mkdtempSync(join(tmpdir(), 'test-repo-'));
       cleanupPaths.push(testRepo);
       
       await execa('git', ['init'], { cwd: testRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: testRepo });
       await execa('git', ['config', 'user.name', 'Test'], { cwd: testRepo });
       
-      // Create package.json with realistic content from fixtures
-      createPackageJson(testRepo, 'nextjsFrontend');
+      // Create package.json with realistic content
+      writeFileSync(join(testRepo, 'package.json'), JSON.stringify({
+        name: 'test-frontend',
+        version: '1.0.0',
+        scripts: { 
+          dev: 'next dev',
+          build: 'next build',
+          start: 'next start',
+          test: 'jest',
+          lint: 'eslint .'
+        },
+        dependencies: {
+          'next': '^14.0.0',
+          'react': '^18.0.0',
+          'react-dom': '^18.0.0'
+        },
+        devDependencies: {
+          'eslint': '^8.0.0',
+          'jest': '^29.0.0'
+        }
+      }, null, 2));
       
       // Create .env file
       writeFileSync(join(testRepo, '.env'), 'NODE_ENV=development\nPORT=3000\nAPI_URL=http://localhost:4000\n');
@@ -78,7 +94,7 @@ describe('Integration Tests - Complete Workspace Generation', () => {
       // Create a new branch for the worktree to avoid main branch being checked out
       await execa('git', ['branch', 'test-branch'], { cwd: testRepo });
       
-      const worktreeDir = createTestDir('worktree', 'workspace-creation');
+      const worktreeDir = mkdtempSync(join(tmpdir(), 'worktree-'));
       cleanupPaths.push(worktreeDir);
       
       await addWorktree(testRepo, 'test-branch', worktreeDir);
@@ -158,14 +174,21 @@ describe('Integration Tests - Complete Workspace Generation', () => {
 
     beforeEach(async () => {
       // Create frontend repo (npm)
-      frontendRepo = createTestDir('frontend-repo', 'multi-repo-frontend');
+      frontendRepo = mkdtempSync(join(tmpdir(), 'frontend-repo-'));
       cleanupPaths.push(frontendRepo);
       
       await execa('git', ['init'], { cwd: frontendRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: frontendRepo });
       await execa('git', ['config', 'user.name', 'Test'], { cwd: frontendRepo });
       
-      createPackageJson(frontendRepo, 'reactCRA');
+      writeFileSync(join(frontendRepo, 'package.json'), JSON.stringify({
+        name: 'my-frontend',
+        scripts: { 
+          dev: 'react-scripts start',
+          build: 'react-scripts build',
+          test: 'react-scripts test'
+        }
+      }));
       
       // Create node_modules
       const frontendNodeModules = join(frontendRepo, 'node_modules');
@@ -176,14 +199,21 @@ describe('Integration Tests - Complete Workspace Generation', () => {
       await execa('git', ['commit', '-m', 'frontend initial'], { cwd: frontendRepo });
       
       // Create backend repo (yarn)
-      backendRepo = createTestDir('backend-repo', 'multi-repo-backend');
+      backendRepo = mkdtempSync(join(tmpdir(), 'backend-repo-'));
       cleanupPaths.push(backendRepo);
       
       await execa('git', ['init'], { cwd: backendRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: backendRepo });
       await execa('git', ['config', 'user.name', 'Test'], { cwd: backendRepo });
       
-      createPackageJson(backendRepo, 'expressBackend');
+      writeFileSync(join(backendRepo, 'package.json'), JSON.stringify({
+        name: 'my-backend',
+        scripts: { 
+          dev: 'nodemon index.js',
+          start: 'node index.js',
+          test: 'jest'
+        }
+      }));
       
       // Create yarn.lock to identify as yarn project
       writeFileSync(join(backendRepo, 'yarn.lock'), '# yarn lockfile v1\n\nnodemon@^2.0.0:\n  version "2.0.20"');
@@ -256,10 +286,10 @@ describe('Integration Tests - Complete Workspace Generation', () => {
       expect(backendPM).toBe('yarn');
       
       // Test pnpm detection by creating a pnpm repo
-      const pnpmRepo = createTestDir('pnpm-repo', 'package-manager-test');
+      const pnpmRepo = mkdtempSync(join(tmpdir(), 'pnpm-repo-'));
       cleanupPaths.push(pnpmRepo);
       
-      createPackageJson(pnpmRepo, 'simple');
+      writeFileSync(join(pnpmRepo, 'package.json'), JSON.stringify({ name: 'pnpm-test' }));
       writeFileSync(join(pnpmRepo, 'pnpm-lock.yaml'), 'lockfileVersion: 5.4');
       
       const pnpmPM = detectPM(pnpmRepo);
@@ -270,14 +300,17 @@ describe('Integration Tests - Complete Workspace Generation', () => {
   describe('Error Handling and Edge Cases', () => {
     test('handles partial failures gracefully', async () => {
       // Create one valid repo and one invalid repo reference
-      const validRepo = createTestDir('valid-repo', 'mixed-validation');
+      const validRepo = mkdtempSync(join(tmpdir(), 'valid-repo-'));
       cleanupPaths.push(validRepo);
       
       await execa('git', ['init'], { cwd: validRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: validRepo });
       await execa('git', ['config', 'user.name', 'Test'], { cwd: validRepo });
       
-      createPackageJson(validRepo, 'simple');
+      writeFileSync(join(validRepo, 'package.json'), JSON.stringify({
+        name: 'valid-repo',
+        scripts: { dev: 'echo "valid"' }
+      }));
       
       await execa('git', ['add', '.'], { cwd: validRepo });
       await execa('git', ['commit', '-m', 'initial'], { cwd: validRepo });
@@ -311,14 +344,17 @@ describe('Integration Tests - Complete Workspace Generation', () => {
     });
 
     test('handles repositories without node_modules gracefully', async () => {
-      const repoWithoutNodeModules = createTestDir('no-node-modules', 'missing-deps-test');
+      const repoWithoutNodeModules = mkdtempSync(join(tmpdir(), 'no-node-modules-'));
       cleanupPaths.push(repoWithoutNodeModules);
       
       await execa('git', ['init'], { cwd: repoWithoutNodeModules });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: repoWithoutNodeModules });
       await execa('git', ['config', 'user.name', 'Test'], { cwd: repoWithoutNodeModules });
       
-      createPackageJson(repoWithoutNodeModules, 'simple');
+      writeFileSync(join(repoWithoutNodeModules, 'package.json'), JSON.stringify({
+        name: 'no-deps',
+        scripts: { start: 'echo "hello"' }
+      }));
       
       // No node_modules created
       await execa('git', ['add', '.'], { cwd: repoWithoutNodeModules });
@@ -352,14 +388,22 @@ describe('Integration Tests - Complete Workspace Generation', () => {
 
     beforeEach(async () => {
       // Create test repo
-      testRepo = createTestDir('claude-test-repo', 'claude-md-generation');
+      testRepo = mkdtempSync(join(tmpdir(), 'claude-test-repo-'));
       cleanupPaths.push(testRepo);
       
       await execa('git', ['init'], { cwd: testRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: testRepo });
       await execa('git', ['config', 'user.name', 'Test'], { cwd: testRepo });
       
-      createPackageJson(testRepo, 'simple');
+      writeFileSync(join(testRepo, 'package.json'), JSON.stringify({
+        name: 'claude-test',
+        scripts: { 
+          dev: 'next dev',
+          build: 'next build',
+          test: 'jest',
+          lint: 'eslint'
+        }
+      }));
       
       await execa('git', ['add', '.'], { cwd: testRepo });
       await execa('git', ['commit', '-m', 'initial'], { cwd: testRepo });
@@ -392,7 +436,7 @@ This workspace contains 1 repository for development.
 Happy coding!`;
     });
 
-    test.skip('generates CLAUDE.md with mocked Claude CLI success', async () => {
+    test('generates CLAUDE.md with mocked Claude CLI success', async () => {
       // Mock execa for Claude CLI
       const mockExeca = vi.fn().mockImplementation((command: string, args?: string[], options?: Record<string, unknown>) => {
         if (command === 'claude' && args?.[0] === 'code') {
@@ -468,7 +512,7 @@ Happy coding!`;
       vi.doUnmock('execa');
     });
 
-    test.skip('generates CLAUDE.md with fallback when Claude CLI fails', async () => {
+    test('generates CLAUDE.md with fallback when Claude CLI fails', async () => {
       // Mock execa to simulate Claude CLI failure
       const mockExeca = vi.fn().mockImplementation((command: string, args?: string[], options?: Record<string, unknown>) => {
         if (command === 'claude' && args?.[0] === 'code') {
@@ -512,7 +556,7 @@ Happy coding!`;
 
   describe('File System Operations Integration', () => {
     test('workspace skeleton creation', async () => {
-      const wsDir = createTestDir('skeleton-test', 'workspace-skeleton');
+      const wsDir = mkdtempSync(join(tmpdir(), 'skeleton-test-'));
       cleanupPaths.push(wsDir);
       
       await ensureWorkspaceSkeleton(wsDir);
@@ -528,7 +572,7 @@ Happy coding!`;
 
     test('node_modules priming with real files', async () => {
       // Create source with node_modules
-      const sourceDir = createTestDir('source', 'node-modules-priming');
+      const sourceDir = mkdtempSync(join(tmpdir(), 'source-'));
       cleanupPaths.push(sourceDir);
       
       const sourceNodeModules = join(sourceDir, 'node_modules');
@@ -540,7 +584,7 @@ Happy coding!`;
       writeFileSync(join(sourceNodeModules, '.bin', 'executable'), '#!/bin/bash\necho "test"');
       
       // Create destination
-      const destDir = createTestDir('dest', 'node-modules-priming');
+      const destDir = mkdtempSync(join(tmpdir(), 'dest-'));
       cleanupPaths.push(destDir);
       
       await primeNodeModules(sourceDir, destDir);
@@ -556,10 +600,10 @@ Happy coding!`;
     });
 
     test('environment files copying', async () => {
-      const sourceDir = createTestDir('env-source', 'env-file-copying');
+      const sourceDir = mkdtempSync(join(tmpdir(), 'env-source-'));
       cleanupPaths.push(sourceDir);
       
-      const destDir = createTestDir('env-dest', 'env-file-copying');
+      const destDir = mkdtempSync(join(tmpdir(), 'env-dest-'));
       cleanupPaths.push(destDir);
       
       // Create various env files
@@ -592,11 +636,11 @@ Happy coding!`;
   describe('End-to-End Workflow Validation', () => {
     test('complete workflow with multiple package managers and branches', async () => {
       // Create a complex scenario with multiple repos and branches
-      const mainRepo = createTestDir('main-repo', 'end-to-end-workflow');
+      const mainRepo = mkdtempSync(join(tmpdir(), 'main-repo-'));
       cleanupPaths.push(mainRepo);
       
       // Initialize main repo
-      await execa('git', ['init'], { cwd: mainRepo }, { timeout: 15000 });
+      await execa('git', ['init'], { cwd: mainRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: mainRepo });
       await execa('git', ['config', 'user.name', 'Test'], { cwd: mainRepo });
       
@@ -622,7 +666,7 @@ Happy coding!`;
       await execa('git', ['checkout', 'main'], { cwd: mainRepo });
       
       // Create API repo with pnpm
-      const apiRepo = createTestDir('api-repo', 'end-to-end-workflow');
+      const apiRepo = mkdtempSync(join(tmpdir(), 'api-repo-'));
       cleanupPaths.push(apiRepo);
       
       await execa('git', ['init'], { cwd: apiRepo });
