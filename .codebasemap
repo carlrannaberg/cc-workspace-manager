@@ -2,9 +2,9 @@
   "metadata": {
     "version": 1,
     "root": "/Users/carl/Development/agents/cc-workspace-manager",
-    "createdAt": "2025-08-26T21:45:00.600Z",
-    "updatedAt": "2025-08-26T21:45:00.600Z",
-    "totalFiles": 14
+    "createdAt": "2025-08-28T14:23:37.927Z",
+    "updatedAt": "2025-08-28T14:23:37.927Z",
+    "totalFiles": 17
   },
   "tree": {
     "name": "cc-workspace-manager",
@@ -65,11 +65,23 @@
             "type": "file"
           },
           {
+            "name": "index.test.ts",
+            "type": "file"
+          },
+          {
             "name": "integration.test.ts",
             "type": "file"
           },
           {
+            "name": "package.test.ts",
+            "type": "file"
+          },
+          {
             "name": "pm.test.ts",
+            "type": "file"
+          },
+          {
+            "name": "prompts.test.ts",
             "type": "file"
           }
         ]
@@ -92,11 +104,22 @@
     "src/workspace.ts",
     "tests/fsops.test.ts",
     "tests/git.test.ts",
+    "tests/index.test.ts",
     "tests/integration.test.ts",
+    "tests/package.test.ts",
     "tests/pm.test.ts",
+    "tests/prompts.test.ts",
     "vitest.config.ts"
   ],
   "edges": [
+    {
+      "from": "src/fsops.ts",
+      "to": "src/ui.ts"
+    },
+    {
+      "from": "src/git.ts",
+      "to": "src/ui.ts"
+    },
     {
       "from": "src/index.ts",
       "to": "src/package.ts"
@@ -170,6 +193,26 @@
       "to": "src/git.ts"
     },
     {
+      "from": "tests/index.test.ts",
+      "to": "src/index.ts"
+    },
+    {
+      "from": "tests/index.test.ts",
+      "to": "src/package.ts"
+    },
+    {
+      "from": "tests/index.test.ts",
+      "to": "src/prompts.ts"
+    },
+    {
+      "from": "tests/index.test.ts",
+      "to": "src/ui.ts"
+    },
+    {
+      "from": "tests/index.test.ts",
+      "to": "src/workspace.ts"
+    },
+    {
       "from": "tests/integration.test.ts",
       "to": "src/fsops.ts"
     },
@@ -190,8 +233,28 @@
       "to": "src/workspace.ts"
     },
     {
+      "from": "tests/package.test.ts",
+      "to": "src/package.ts"
+    },
+    {
+      "from": "tests/package.test.ts",
+      "to": "src/types.ts"
+    },
+    {
       "from": "tests/pm.test.ts",
       "to": "src/pm.ts"
+    },
+    {
+      "from": "tests/prompts.test.ts",
+      "to": "src/git.ts"
+    },
+    {
+      "from": "tests/prompts.test.ts",
+      "to": "src/prompts.ts"
+    },
+    {
+      "from": "tests/prompts.test.ts",
+      "to": "src/ui.ts"
     }
   ],
   "files": {
@@ -212,9 +275,19 @@
         {
           "from": "fs-extra",
           "kind": "import"
+        },
+        {
+          "from": "fs/promises",
+          "kind": "import"
+        },
+        {
+          "from": "./ui.js",
+          "kind": "import"
         }
       ],
-      "dependencies": [],
+      "dependencies": [
+        "src/ui.ts"
+      ],
       "functions": [],
       "classes": [],
       "constants": []
@@ -227,9 +300,47 @@
           "imported": [
             "execa"
           ]
+        },
+        {
+          "from": "path",
+          "kind": "import",
+          "imported": [
+            "resolve"
+          ]
+        },
+        {
+          "from": "fs",
+          "kind": "import",
+          "imported": [
+            "existsSync",
+            "statSync"
+          ]
+        },
+        {
+          "from": "fs/promises",
+          "kind": "import",
+          "imported": [
+            "readdir"
+          ]
+        },
+        {
+          "from": "path",
+          "kind": "import",
+          "imported": [
+            "join"
+          ]
+        },
+        {
+          "from": "./ui.js",
+          "kind": "import",
+          "imported": [
+            "ui"
+          ]
         }
       ],
-      "dependencies": [],
+      "dependencies": [
+        "src/ui.ts"
+      ],
       "functions": [
         {
           "name": "discoverRepos",
@@ -277,47 +388,56 @@
         }
       ],
       "classes": [],
-      "constants": []
+      "constants": [
+        {
+          "name": "repoCache",
+          "initKind": "unknown",
+          "isExported": false
+        },
+        {
+          "name": "DEFAULT_CACHE_TTL",
+          "initKind": "unknown",
+          "isExported": false
+        }
+      ]
     },
     "src/index.ts": {
       "imports": [
         {
           "from": "./prompts.js",
-          "kind": "import",
-          "imported": [
-            "getUserSelections",
-            "handlePromptError"
-          ]
+          "kind": "import"
         },
         {
           "from": "./workspace.js",
-          "kind": "import",
-          "imported": [
-            "createWorkspace",
-            "generateClaudeMd"
-          ]
+          "kind": "import"
         },
         {
           "from": "./package.js",
-          "kind": "import",
-          "imported": [
-            "generateRootPackageJson"
-          ]
+          "kind": "import"
         },
         {
           "from": "./ui.js",
-          "kind": "import",
-          "imported": [
-            "ui"
-          ]
+          "kind": "import"
+        },
+        {
+          "from": "fs-extra",
+          "kind": "import"
+        },
+        {
+          "from": "fs",
+          "kind": "import"
+        },
+        {
+          "from": "url",
+          "kind": "import"
+        },
+        {
+          "from": "path",
+          "kind": "import"
         },
         {
           "from": "./types.js",
-          "kind": "import",
-          "imported": [
-            "RepoPick",
-            "RepoMounted"
-          ]
+          "kind": "import"
         }
       ],
       "dependencies": [
@@ -327,54 +447,7 @@
         "src/ui.ts",
         "src/workspace.ts"
       ],
-      "functions": [
-        {
-          "name": "displayRepositorySelection",
-          "params": [
-            {
-              "name": "repoPicks",
-              "type": "RepoPick[]"
-            }
-          ],
-          "isAsync": false,
-          "isExported": false,
-          "returnType": "void"
-        },
-        {
-          "name": "displaySuccessMessage",
-          "params": [
-            {
-              "name": "wsDir",
-              "type": "string"
-            },
-            {
-              "name": "mounted",
-              "type": "RepoMounted[]"
-            }
-          ],
-          "isAsync": false,
-          "isExported": false,
-          "returnType": "void"
-        },
-        {
-          "name": "handleError",
-          "params": [
-            {
-              "name": "error",
-              "type": "unknown"
-            }
-          ],
-          "isAsync": false,
-          "isExported": false,
-          "returnType": "never"
-        },
-        {
-          "name": "main",
-          "params": [],
-          "isAsync": true,
-          "isExported": false
-        }
-      ],
+      "functions": [],
       "classes": [],
       "constants": []
     },
@@ -525,7 +598,7 @@
           "params": [
             {
               "name": "error",
-              "type": "Error"
+              "type": "unknown"
             }
           ],
           "isAsync": false,
@@ -603,10 +676,6 @@
         {
           "from": "./types.js",
           "kind": "import"
-        },
-        {
-          "from": "@agent-io/stream",
-          "kind": "dynamic-import"
         }
       ],
       "dependencies": [
@@ -715,6 +784,48 @@
       "classes": [],
       "constants": []
     },
+    "tests/index.test.ts": {
+      "imports": [
+        {
+          "from": "vitest",
+          "kind": "import"
+        },
+        {
+          "from": "../src/index.js",
+          "kind": "import"
+        },
+        {
+          "from": "../src/prompts.js",
+          "kind": "import"
+        },
+        {
+          "from": "../src/workspace.js",
+          "kind": "import"
+        },
+        {
+          "from": "../src/package.js",
+          "kind": "import"
+        },
+        {
+          "from": "../src/ui.js",
+          "kind": "import"
+        },
+        {
+          "from": "fs-extra",
+          "kind": "import"
+        }
+      ],
+      "dependencies": [
+        "src/index.ts",
+        "src/package.ts",
+        "src/prompts.ts",
+        "src/ui.ts",
+        "src/workspace.ts"
+      ],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
     "tests/integration.test.ts": {
       "imports": [
         {
@@ -773,6 +884,37 @@
       "classes": [],
       "constants": []
     },
+    "tests/package.test.ts": {
+      "imports": [
+        {
+          "from": "vitest",
+          "kind": "import"
+        },
+        {
+          "from": "../src/package.js",
+          "kind": "import"
+        },
+        {
+          "from": "fs-extra",
+          "kind": "import"
+        },
+        {
+          "from": "path",
+          "kind": "import"
+        },
+        {
+          "from": "../src/types.js",
+          "kind": "import"
+        }
+      ],
+      "dependencies": [
+        "src/package.ts",
+        "src/types.ts"
+      ],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
     "tests/pm.test.ts": {
       "imports": [
         {
@@ -820,6 +962,54 @@
       ],
       "dependencies": [
         "src/pm.ts"
+      ],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "tests/prompts.test.ts": {
+      "imports": [
+        {
+          "from": "vitest",
+          "kind": "import",
+          "imported": [
+            "describe",
+            "test",
+            "expect",
+            "vi",
+            "beforeEach",
+            "afterEach"
+          ]
+        },
+        {
+          "from": "@inquirer/prompts",
+          "kind": "import",
+          "isNamespace": true
+        },
+        {
+          "from": "../src/prompts.js",
+          "kind": "import",
+          "imported": [
+            "getUserSelections",
+            "UserCancelledError",
+            "handlePromptError"
+          ]
+        },
+        {
+          "from": "../src/git.js",
+          "kind": "import",
+          "isNamespace": true
+        },
+        {
+          "from": "../src/ui.js",
+          "kind": "import",
+          "isNamespace": true
+        }
+      ],
+      "dependencies": [
+        "src/git.ts",
+        "src/prompts.ts",
+        "src/ui.ts"
       ],
       "functions": [],
       "classes": [],
