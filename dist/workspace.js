@@ -221,72 +221,104 @@ ${repos.map(r => `### ${r.alias}
  * @returns Promise that resolves to true if successful, false if failed
  */
 async function tryClaudeCliGeneration(prompt, wsDir) {
-    try {
-        // Sanitize and validate CLAUDE_CLI_ARGS to prevent injection
-        const sanitizedArgs = SecurityValidator.sanitizeCliArgs(process.env.CLAUDE_CLI_ARGS);
-        // Invoke Claude CLI with streaming - use direct args instead of env var
-        const args = ['code', '--non-interactive', ...sanitizedArgs];
-        const child = execa('claude', args, {
-            shell: false, // Prevent shell injection
-            env: {
-                ...process.env,
-                CLAUDE_SAFE_MODE: '1' // Add safety flag
-            }
-        });
-        // Try to use @agent-io/stream if available with safe dynamic import
+    // Sanitize and validate CLAUDE_CLI_ARGS to prevent injection
+    const sanitizedArgs = SecurityValidator.sanitizeCliArgs(process.env.CLAUDE_CLI_ARGS);
+    // Prefer streaming JSON; fall back to plain print
+    const hasOutputFormat = sanitizedArgs.includes('--output-format');
+    const streamArgs = hasOutputFormat
+        ? ['-p', ...sanitizedArgs, prompt]
+        : ['-p', '--output-format', 'stream-json', ...sanitizedArgs, prompt];
+    const printArgs = ['-p', ...sanitizedArgs, prompt];
+    const timeoutMs = Number(process.env.CCWS_CLAUDE_TIMEOUT_MS) || (process.env.VITEST ? 4000 : 300000);
+    // Try variants in order
+    for (const args of [streamArgs, printArgs]) {
         try {
-            // Safe dynamic import for optional dependency
-            let agentIoModule = null;
-            try {
-                const moduleName = '@agent-io/stream';
-                agentIoModule = await import(moduleName);
-            }
-            catch {
-                // Module not available, will fall back to basic stdout
-                agentIoModule = null;
-            }
-            if (agentIoModule &&
-                typeof agentIoModule === 'object' &&
-                'createStreamRenderer' in agentIoModule &&
-                typeof agentIoModule.createStreamRenderer === 'function') {
-                const moduleWithRenderer = agentIoModule;
-                const renderer = moduleWithRenderer.createStreamRenderer({
-                    onText: (t) => process.stdout.write(t)
-                });
-                if (renderer && typeof renderer.push === 'function') {
-                    child.stdout?.on('data', (buf) => {
-                        renderer.push(buf.toString());
+            const useStreamJson = args.includes('stream-json');
+            let collected = '';
+            if (useStreamJson) {
+                // Use external aio-stream via npx if available; fall back to inline NDJSON parsing
+                const claude = execa('claude', args, { shell: false, timeout: timeoutMs });
+                try {
+                    // First attempt: npx aio-stream
+                    const streamer = execa('npx', ['-y', 'aio-stream'], { shell: false, timeout: timeoutMs });
+                    // Pipe Claude stream into streamer
+                    claude.stdout?.pipe(streamer.stdin);
+                    streamer.stdout?.on('data', (buf) => {
+                        const text = buf.toString();
+                        collected += text;
+                        process.stdout.write(text);
                     });
-                    ui.info('Using @agent-io/stream for enhanced output rendering');
+                    await Promise.all([claude, streamer]);
                 }
-                else {
-                    throw new Error('Invalid renderer object from @agent-io/stream');
+                catch {
+                    try {
+                        // Second attempt: npx @agent-io/stream (package name)
+                        const claude2 = execa('claude', args, { shell: false, timeout: timeoutMs });
+                        const streamer2 = execa('npx', ['-y', '@agent-io/stream'], { shell: false, timeout: timeoutMs });
+                        claude2.stdout?.pipe(streamer2.stdin);
+                        streamer2.stdout?.on('data', (buf) => {
+                            const text = buf.toString();
+                            collected += text;
+                            process.stdout.write(text);
+                        });
+                        await Promise.all([claude2, streamer2]);
+                    }
+                    catch {
+                        // Final fallback: minimal NDJSON parsing in-process
+                        const claude3 = execa('claude', args, { shell: false, timeout: timeoutMs });
+                        let lineBuffer = '';
+                        claude3.stdout?.on('data', (buf) => {
+                            lineBuffer += buf.toString();
+                            let idx;
+                            while ((idx = lineBuffer.indexOf('\n')) !== -1) {
+                                const line = lineBuffer.slice(0, idx);
+                                lineBuffer = lineBuffer.slice(idx + 1);
+                                try {
+                                    if (!line.trim())
+                                        continue;
+                                    const evt = JSON.parse(line);
+                                    const text = typeof evt?.text === 'string' ? evt.text
+                                        : typeof evt?.delta === 'string' ? evt.delta
+                                            : typeof evt?.content === 'string' ? evt.content
+                                                : '';
+                                    if (text) {
+                                        collected += text;
+                                        process.stdout.write(text);
+                                    }
+                                }
+                                catch {
+                                    // ignore
+                                }
+                            }
+                        });
+                        await claude3;
+                    }
                 }
             }
             else {
-                throw new Error('@agent-io/stream createStreamRenderer not available');
+                // Plain print mode
+                const { stdout } = await execa('claude', args, { shell: false, timeout: timeoutMs });
+                collected = stdout;
             }
+            await writeFile(join(wsDir, 'CLAUDE.md'), collected);
+            ui.success('✓ CLAUDE.md generated successfully via Claude CLI');
+            return true;
         }
         catch (error) {
-            // Fallback: pipe directly to stdout
-            child.stdout?.pipe(process.stdout);
-            ui.info(`Using direct output streaming (fallback mode): ${ErrorUtils.extractErrorMessage(error)}`);
+            const message = ErrorUtils.extractErrorMessage(error).toLowerCase();
+            if (message.includes('unknown option') || message.includes('unrecognized option')) {
+                continue; // try next variant
+            }
+            if (message.includes('timed out')) {
+                ui.warning('Claude CLI timed out; using fallback template');
+                break;
+            }
+            ui.warning(`Claude CLI failed for args [${args.join(' ')}]: ${SecurityValidator.sanitizeErrorMessage(error)}`);
+            break;
         }
-        // Send prompt to Claude CLI
-        child.stdin?.write(prompt);
-        child.stdin?.end();
-        // Wait for completion and save result
-        const { stdout } = await child;
-        await writeFile(join(wsDir, 'CLAUDE.md'), stdout);
-        ui.success('✓ CLAUDE.md generated successfully via Claude CLI');
-        return true;
     }
-    catch (error) {
-        // Sanitize error message to prevent information disclosure
-        const sanitizedError = SecurityValidator.sanitizeErrorMessage(error);
-        ui.warning(`Claude CLI failed, using fallback template: ${sanitizedError}`);
-        return false;
-    }
+    ui.warning('Claude CLI unavailable or incompatible; using fallback template');
+    return false;
 }
 /**
  * Generates a comprehensive CLAUDE.md workspace guide using Claude CLI.
@@ -337,7 +369,7 @@ export async function generateClaudeMd(wsDir, repos) {
     // Step 2: Generate the prompt for Claude CLI
     const prompt = generateWorkspacePrompt(repos);
     // Step 3: Attempt to generate using Claude CLI
-    ui.info('Generating CLAUDE.md via Claude CLI...');
+    ui.info('Generating CLAUDE.md via Claude CLI (streaming)...');
     const success = await tryClaudeCliGeneration(prompt, wsDir);
     // Step 4: Use fallback template if Claude CLI failed
     if (!success) {
