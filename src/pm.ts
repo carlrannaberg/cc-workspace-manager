@@ -1,23 +1,38 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { SecurityValidator, ErrorUtils } from './utils/security.js';
 
 export function detectPM(dir: string): 'npm' | 'yarn' | 'pnpm' {
+  // Validate directory path for security
+  const sanitizedDir = SecurityValidator.validatePath(dir);
+  
   // Check for lockfiles in order of precedence (most specific first)
   // pnpm takes highest precedence as it's most specific
-  if (existsSync(join(dir, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (existsSync(join(sanitizedDir, 'pnpm-lock.yaml'))) return 'pnpm';
   
   // yarn.lock indicates yarn usage
-  if (existsSync(join(dir, 'yarn.lock'))) return 'yarn';
+  if (existsSync(join(sanitizedDir, 'yarn.lock'))) return 'yarn';
   
   // package-lock.json indicates npm usage
-  if (existsSync(join(dir, 'package-lock.json'))) return 'npm';
+  if (existsSync(join(sanitizedDir, 'package-lock.json'))) return 'npm';
   
   // Check package.json packageManager field as fallback
   try {
-    const pkgPath = join(dir, 'package.json');
+    const pkgPath = join(sanitizedDir, 'package.json');
     if (existsSync(pkgPath)) {
       const pkgContent = readFileSync(pkgPath, 'utf8');
+      
+      // Validate JSON content size to prevent DoS attacks
+      if (pkgContent.length > 1024 * 1024) { // 1MB limit
+        throw new Error('package.json file too large');
+      }
+      
       const pkg = JSON.parse(pkgContent);
+      
+      // Validate parsed JSON structure
+      if (typeof pkg !== 'object' || pkg === null) {
+        throw new Error('Invalid package.json structure');
+      }
       const pmField = pkg?.packageManager;
       
       // Check packageManager field with version specificity
@@ -42,12 +57,24 @@ export function pmRun(
   alias: string, 
   script: string
 ): string {
+  // Validate alias to prevent directory traversal in generated commands
+  const sanitizedAlias = alias.trim();
+  if (sanitizedAlias.includes('..') || sanitizedAlias.includes('/') || sanitizedAlias.includes('\\')) {
+    throw new Error('Invalid alias: contains unsafe characters');
+  }
+  
+  // Validate script name to prevent command injection (allow empty scripts)
+  const sanitizedScript = script.trim();
+  if (sanitizedScript.includes(';') || sanitizedScript.includes('&') || sanitizedScript.includes('|')) {
+    throw new Error('Invalid script name: contains unsafe characters');
+  }
+  
   switch(pm) {
     case 'yarn': 
-      return `yarn --cwd ./repos/${alias} ${script}`;
+      return `yarn --cwd ./repos/${sanitizedAlias} ${sanitizedScript}`;
     case 'pnpm': 
-      return `pnpm -C ./repos/${alias} ${script}`;
+      return `pnpm -C ./repos/${sanitizedAlias} ${sanitizedScript}`;
     default: 
-      return `npm --prefix ./repos/${alias} run ${script}`;
+      return `npm --prefix ./repos/${sanitizedAlias} run ${sanitizedScript}`;
   }
 }

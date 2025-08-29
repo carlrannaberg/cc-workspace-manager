@@ -3,6 +3,7 @@ import { basename } from 'path';
 import { discoverRepos, currentBranch } from './git.js';
 import type { RepoPick } from './types.js';
 import { ui } from './ui.js';
+import { ErrorUtils, SecurityValidator } from './utils/security.js';
 
 /**
  * Custom error class for user-initiated cancellation events.
@@ -157,7 +158,12 @@ export async function getUserSelections(): Promise<RepoPick[]> {
           if (!input.trim()) {
             return 'Branch cannot be empty';
           }
-          return true;
+          try {
+            SecurityValidator.validateBranchName(input.trim());
+            return true;
+          } catch (error) {
+            return ErrorUtils.extractErrorMessage(error);
+          }
         }
       });
       
@@ -234,7 +240,7 @@ export function handlePromptError(error: unknown): void {
     process.exit(0);
   }
   
-  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorMessage = ErrorUtils.extractErrorMessage(error);
   
   if (errorMessage.includes('No git repositories found')) {
     ui.error('❌ Setup failed: No repositories to configure');

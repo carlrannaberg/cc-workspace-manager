@@ -4,6 +4,7 @@ import { join, basename, resolve } from 'path';
 import fs from 'fs-extra';
 import { readdir } from 'fs/promises';
 import { ui } from './ui.js';
+import { SecurityValidator, ErrorUtils } from './utils/security.js';
 
 export async function ensureWorkspaceSkeleton(wsDir: string): Promise<void> {
   await fs.ensureDir(join(wsDir, 'repos'));
@@ -17,13 +18,15 @@ export async function primeNodeModules(
   src: string, 
   dst: string
 ): Promise<{ method: 'hardlink' | 'rsync' | 'skipped'; error?: string }> {
-  // Validate paths to prevent injection
-  const sanitizedSrc = resolve(src);
-  const sanitizedDst = resolve(dst);
+  // Validate paths to prevent injection using centralized security utility
+  let sanitizedSrc: string;
+  let sanitizedDst: string;
   
-  // Security checks
-  if (sanitizedSrc.includes('..') || sanitizedDst.includes('..') || src.includes('..') || dst.includes('..')) {
-    return { method: 'skipped', error: 'Path traversal detected' };
+  try {
+    sanitizedSrc = SecurityValidator.validatePath(src);
+    sanitizedDst = SecurityValidator.validatePath(dst);
+  } catch (error) {
+    return { method: 'skipped', error: SecurityValidator.sanitizeErrorMessage(error) };
   }
   
   const srcPath = join(sanitizedSrc, 'node_modules');
@@ -41,7 +44,7 @@ export async function primeNodeModules(
     });
     return { method: 'hardlink' };
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorMsg = ErrorUtils.extractErrorMessage(error);
     
     // Check for specific hardlink failures and provide helpful context
     if (errorMsg.includes('Operation not permitted') || errorMsg.includes('cross-device')) {
@@ -65,7 +68,7 @@ export async function primeNodeModules(
     });
     return { method: 'rsync' };
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorMsg = ErrorUtils.extractErrorMessage(error);
     ui.error(`Failed to prime node_modules for ${basename(dst)}: ${errorMsg}`);
     ui.info('You may need to run "npm install" manually in this repository');
     return { method: 'skipped', error: errorMsg };
@@ -77,9 +80,9 @@ export async function copyEnvFiles(
   dst: string
 ): Promise<void> {
   try {
-    // Validate and resolve paths
-    const srcPath = resolve(src);
-    const dstPath = resolve(dst);
+    // Validate paths using centralized security utility
+    const srcPath = SecurityValidator.validatePath(src);
+    const dstPath = SecurityValidator.validatePath(dst);
     
     // Security validations
     if (!existsSync(srcPath) || !statSync(srcPath).isDirectory()) {
@@ -88,11 +91,6 @@ export async function copyEnvFiles(
     
     if (!existsSync(dstPath) || !statSync(dstPath).isDirectory()) {
       throw new Error('Invalid destination directory');
-    }
-    
-    // Prevent path traversal
-    if (srcPath.includes('..') || dstPath.includes('..') || src.includes('..') || dst.includes('..')) {
-      throw new Error('Path traversal detected');
     }
     
     // Use fs.readdir instead of shell command for safety
@@ -113,15 +111,13 @@ export async function copyEnvFiles(
             ui.info(`Copied environment file: ${file}`);
           }
         } catch (fileError) {
-          ui.warning(`Failed to copy ${file}: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+          ui.warning(`Failed to copy ${file}: ${ErrorUtils.extractErrorMessage(fileError)}`);
         }
       })
     );
   } catch (error) {
-    // Sanitize error messages to avoid exposing paths
-    const safeError = error instanceof Error 
-      ? error.message.replace(/\/.*?\//g, '/***/')
-      : 'Unknown error';
+    // Sanitize error messages using centralized security utility
+    const safeError = SecurityValidator.sanitizeErrorMessage(error);
     ui.warning(`Failed to copy env files: ${safeError}`);
   }
 }

@@ -8,39 +8,54 @@ import { createWorkspace, generateClaudeMd } from '../src/workspace.js';
 import { ensureWorkspaceSkeleton, primeNodeModules, copyEnvFiles } from '../src/fsops.js';
 import { detectPM } from '../src/pm.js';
 import type { RepoPick, RepoMounted } from '../src/types.js';
-import { createTestDir } from './utils/testDir.js';
+import { TestDirManager } from './utils/testDir.js';
 import { createPackageJson, packageFixtures } from './fixtures/packageJsonFixtures.js';
 import { errorMatchers } from './utils/errorMatchers.js';
 
 
 describe('Integration Tests - Complete Workspace Generation', () => {
   let testDir: string;
-  let cleanupPaths: string[] = [];
+  let testManager: TestDirManager;
   
   beforeAll(() => {
-    testDir = createTestDir('ccws-integration', 'main-suite');
-    cleanupPaths.push(testDir);
+    testManager = new TestDirManager();
+    testDir = testManager.create('ccws-integration', 'main-suite');
   });
 
   afterAll(async () => {
-    // Cleanup test files
-    for (const path of cleanupPaths) {
-      try {
-        rmSync(path, { recursive: true, force: true });
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
+    // Wait for any lingering git operations to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+    testManager.cleanup();
   });
 
   describe('Single Repository Workspace Generation', () => {
     let testRepo: string;
+    let suiteManager: TestDirManager;
+    let workspaceDirs: string[] = [];
+
+    beforeAll(() => {
+      suiteManager = new TestDirManager();
+    });
+
+    afterAll(async () => {
+      // Wait for git operations to complete before cleanup
+      await new Promise(resolve => setTimeout(resolve, 200));
+      suiteManager.cleanup();
+      
+      // Clean up workspace directories created by createWorkspace()
+      for (const wsDir of workspaceDirs) {
+        try {
+          rmSync(wsDir, { recursive: true, force: true });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    });
 
     beforeEach(async () => {
       // Create a test git repo with unique naming
       const currentTest = expect.getState().currentTestName || 'unknown-test';
-      testRepo = createTestDir('test-repo', currentTest);
-      cleanupPaths.push(testRepo);
+      testRepo = suiteManager.create('test-repo', currentTest);
       
       await execa('git', ['init'], { cwd: testRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: testRepo });
@@ -79,8 +94,7 @@ describe('Integration Tests - Complete Workspace Generation', () => {
       // Create a new branch for the worktree to avoid main branch being checked out
       await execa('git', ['branch', 'test-branch'], { cwd: testRepo });
       
-      const worktreeDir = createTestDir('worktree', 'workspace-creation');
-      cleanupPaths.push(worktreeDir);
+      const worktreeDir = suiteManager.create('worktree', 'workspace-creation');
       
       await addWorktree(testRepo, 'test-branch', worktreeDir);
       
@@ -109,7 +123,7 @@ describe('Integration Tests - Complete Workspace Generation', () => {
       }];
       
       const { wsDir, mounted } = await createWorkspace(repoPicks);
-      cleanupPaths.push(wsDir);
+      workspaceDirs.push(wsDir);
       
       // Verify workspace structure
       expect(existsSync(wsDir)).toBe(true);
@@ -156,11 +170,31 @@ describe('Integration Tests - Complete Workspace Generation', () => {
   describe('Multiple Repository Workspace Generation', () => {
     let frontendRepo: string;
     let backendRepo: string;
+    let multiSuiteManager: TestDirManager;
+    let multiWorkspaceDirs: string[] = [];
+
+    beforeAll(() => {
+      multiSuiteManager = new TestDirManager();
+    });
+
+    afterAll(async () => {
+      // Wait for git operations to complete before cleanup
+      await new Promise(resolve => setTimeout(resolve, 200));
+      multiSuiteManager.cleanup();
+      
+      // Clean up workspace directories created by createWorkspace()
+      for (const wsDir of multiWorkspaceDirs) {
+        try {
+          rmSync(wsDir, { recursive: true, force: true });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    });
 
     beforeEach(async () => {
       // Create frontend repo (npm)
-      frontendRepo = createTestDir('frontend-repo', 'multi-repo-frontend');
-      cleanupPaths.push(frontendRepo);
+      frontendRepo = multiSuiteManager.create('frontend-repo', 'multi-repo-frontend');
       
       await execa('git', ['init'], { cwd: frontendRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: frontendRepo });
@@ -177,8 +211,7 @@ describe('Integration Tests - Complete Workspace Generation', () => {
       await execa('git', ['commit', '-m', 'frontend initial'], { cwd: frontendRepo });
       
       // Create backend repo (yarn)
-      backendRepo = createTestDir('backend-repo', 'multi-repo-backend');
-      cleanupPaths.push(backendRepo);
+      backendRepo = multiSuiteManager.create('backend-repo', 'multi-repo-backend');
       
       await execa('git', ['init'], { cwd: backendRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: backendRepo });
@@ -213,7 +246,7 @@ describe('Integration Tests - Complete Workspace Generation', () => {
       ];
       
       const { wsDir, mounted } = await createWorkspace(repoPicks);
-      cleanupPaths.push(wsDir);
+      multiWorkspaceDirs.push(wsDir);
       
       // Verify both repositories are mounted
       expect(mounted).toHaveLength(2);
@@ -257,8 +290,7 @@ describe('Integration Tests - Complete Workspace Generation', () => {
       expect(backendPM).toBe('yarn');
       
       // Test pnpm detection by creating a pnpm repo
-      const pnpmRepo = createTestDir('pnpm-repo', 'package-manager-test');
-      cleanupPaths.push(pnpmRepo);
+      const pnpmRepo = multiSuiteManager.create('pnpm-repo', 'package-manager-test');
       
       createPackageJson(pnpmRepo, 'simple');
       writeFileSync(join(pnpmRepo, 'pnpm-lock.yaml'), 'lockfileVersion: 5.4');
@@ -269,10 +301,31 @@ describe('Integration Tests - Complete Workspace Generation', () => {
   });
 
   describe('Error Handling and Edge Cases', () => {
+    let errorSuiteManager: TestDirManager;
+    let errorWorkspaceDirs: string[] = [];
+
+    beforeAll(() => {
+      errorSuiteManager = new TestDirManager();
+    });
+
+    afterAll(async () => {
+      // Wait for git operations to complete before cleanup
+      await new Promise(resolve => setTimeout(resolve, 200));
+      errorSuiteManager.cleanup();
+      
+      // Clean up workspace directories created by createWorkspace()
+      for (const wsDir of errorWorkspaceDirs) {
+        try {
+          rmSync(wsDir, { recursive: true, force: true });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    });
+
     test('handles partial failures gracefully', async () => {
       // Create one valid repo and one invalid repo reference
-      const validRepo = createTestDir('valid-repo', 'mixed-validation');
-      cleanupPaths.push(validRepo);
+      const validRepo = errorSuiteManager.create('valid-repo', 'mixed-validation');
       
       await execa('git', ['init'], { cwd: validRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: validRepo });
@@ -293,7 +346,7 @@ describe('Integration Tests - Complete Workspace Generation', () => {
       ];
       
       const { wsDir, mounted } = await createWorkspace(repoPicks);
-      cleanupPaths.push(wsDir);
+      errorWorkspaceDirs.push(wsDir);
       
       // Should succeed with only the valid repo
       expect(mounted).toHaveLength(1);
@@ -312,8 +365,7 @@ describe('Integration Tests - Complete Workspace Generation', () => {
     });
 
     test('handles repositories without node_modules gracefully', async () => {
-      const repoWithoutNodeModules = createTestDir('no-node-modules', 'missing-deps-test');
-      cleanupPaths.push(repoWithoutNodeModules);
+      const repoWithoutNodeModules = errorSuiteManager.create('no-node-modules', 'missing-deps-test');
       
       await execa('git', ['init'], { cwd: repoWithoutNodeModules });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: repoWithoutNodeModules });
@@ -335,7 +387,7 @@ describe('Integration Tests - Complete Workspace Generation', () => {
       }];
       
       const { wsDir, mounted } = await createWorkspace(repoPicks);
-      cleanupPaths.push(wsDir);
+      errorWorkspaceDirs.push(wsDir);
       
       // Should succeed even without node_modules to prime
       expect(mounted).toHaveLength(1);
@@ -350,11 +402,31 @@ describe('Integration Tests - Complete Workspace Generation', () => {
   describe('CLAUDE.md Generation with Mocked CLI', () => {
     let testRepo: string;
     let mockClaudeOutput: string;
+    let claudeSuiteManager: TestDirManager;
+    let claudeWorkspaceDirs: string[] = [];
+
+    beforeAll(() => {
+      claudeSuiteManager = new TestDirManager();
+    });
+
+    afterAll(async () => {
+      // Wait for git operations to complete before cleanup
+      await new Promise(resolve => setTimeout(resolve, 200));
+      claudeSuiteManager.cleanup();
+      
+      // Clean up workspace directories created by createWorkspace()
+      for (const wsDir of claudeWorkspaceDirs) {
+        try {
+          rmSync(wsDir, { recursive: true, force: true });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    });
 
     beforeEach(async () => {
       // Create test repo
-      testRepo = createTestDir('claude-test-repo', 'claude-md-generation');
-      cleanupPaths.push(testRepo);
+      testRepo = claudeSuiteManager.create('claude-test-repo', 'claude-md-generation');
       
       await execa('git', ['init'], { cwd: testRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: testRepo });
@@ -421,7 +493,7 @@ Happy coding!`;
       }];
       
       const { wsDir, mounted } = await createWorkspace(repoPicks);
-      cleanupPaths.push(wsDir);
+      claudeWorkspaceDirs.push(wsDir);
       
       // Mock the Claude CLI child process
       const mockChild = {
@@ -493,7 +565,7 @@ Happy coding!`;
       }];
       
       const { wsDir, mounted } = await createWorkspace(repoPicks);
-      cleanupPaths.push(wsDir);
+      claudeWorkspaceDirs.push(wsDir);
       
       await generateClaudeMd(wsDir, mounted);
       
@@ -512,9 +584,20 @@ Happy coding!`;
   });
 
   describe('File System Operations Integration', () => {
+    let fsSuiteManager: TestDirManager;
+
+    beforeAll(() => {
+      fsSuiteManager = new TestDirManager();
+    });
+
+    afterAll(async () => {
+      // Wait for any lingering operations
+      await new Promise(resolve => setTimeout(resolve, 200));
+      fsSuiteManager.cleanup();
+    });
+
     test('workspace skeleton creation', async () => {
-      const wsDir = createTestDir('skeleton-test', 'workspace-skeleton');
-      cleanupPaths.push(wsDir);
+      const wsDir = fsSuiteManager.create('skeleton-test', 'workspace-skeleton');
       
       await ensureWorkspaceSkeleton(wsDir);
       
@@ -529,8 +612,7 @@ Happy coding!`;
 
     test('node_modules priming with real files', async () => {
       // Create source with node_modules
-      const sourceDir = createTestDir('source', 'node-modules-priming');
-      cleanupPaths.push(sourceDir);
+      const sourceDir = fsSuiteManager.create('source', 'node-modules-priming');
       
       const sourceNodeModules = join(sourceDir, 'node_modules');
       mkdirSync(sourceNodeModules, { recursive: true });
@@ -541,8 +623,7 @@ Happy coding!`;
       writeFileSync(join(sourceNodeModules, '.bin', 'executable'), '#!/bin/bash\necho "test"');
       
       // Create destination
-      const destDir = createTestDir('dest', 'node-modules-priming');
-      cleanupPaths.push(destDir);
+      const destDir = fsSuiteManager.create('dest', 'node-modules-priming');
       
       await primeNodeModules(sourceDir, destDir);
       
@@ -557,11 +638,9 @@ Happy coding!`;
     });
 
     test('environment files copying', async () => {
-      const sourceDir = createTestDir('env-source', 'env-file-copying');
-      cleanupPaths.push(sourceDir);
+      const sourceDir = fsSuiteManager.create('env-source', 'env-file-copying');
       
-      const destDir = createTestDir('env-dest', 'env-file-copying');
-      cleanupPaths.push(destDir);
+      const destDir = fsSuiteManager.create('env-dest', 'env-file-copying');
       
       // Create various env files
       writeFileSync(join(sourceDir, '.env'), 'NODE_ENV=production');
@@ -591,10 +670,31 @@ Happy coding!`;
   });
 
   describe('End-to-End Workflow Validation', () => {
+    let e2eSuiteManager: TestDirManager;
+    let e2eWorkspaceDirs: string[] = [];
+
+    beforeAll(() => {
+      e2eSuiteManager = new TestDirManager();
+    });
+
+    afterAll(async () => {
+      // Wait for git operations to complete before cleanup
+      await new Promise(resolve => setTimeout(resolve, 200));
+      e2eSuiteManager.cleanup();
+      
+      // Clean up workspace directories created by createWorkspace()
+      for (const wsDir of e2eWorkspaceDirs) {
+        try {
+          rmSync(wsDir, { recursive: true, force: true });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    });
+
     test('complete workflow with multiple package managers and branches', async () => {
       // Create a complex scenario with multiple repos and branches
-      const mainRepo = createTestDir('main-repo', 'end-to-end-workflow');
-      cleanupPaths.push(mainRepo);
+      const mainRepo = e2eSuiteManager.create('main-repo', 'end-to-end-workflow');
       
       // Initialize main repo
       await execa('git', ['init'], { cwd: mainRepo }, { timeout: 15000 });
@@ -620,8 +720,7 @@ Happy coding!`;
       await execa('git', ['checkout', 'main'], { cwd: mainRepo });
       
       // Create API repo with pnpm
-      const apiRepo = createTestDir('api-repo', 'end-to-end-workflow');
-      cleanupPaths.push(apiRepo);
+      const apiRepo = e2eSuiteManager.create('api-repo', 'end-to-end-workflow');
       
       await execa('git', ['init'], { cwd: apiRepo });
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: apiRepo });
@@ -648,7 +747,7 @@ Happy coding!`;
       ];
       
       const { wsDir, mounted } = await createWorkspace(repoPicks);
-      cleanupPaths.push(wsDir);
+      e2eWorkspaceDirs.push(wsDir);
       
       // Verify all three repos are mounted
       expect(mounted).toHaveLength(3);

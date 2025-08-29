@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { currentBranch, discoverRepos, addWorktree } from '../src/git.js';
+import { SecurityValidator } from '../src/utils/security.js';
 import { rmSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { execa } from 'execa';
@@ -282,6 +283,201 @@ describe('Git Operations', () => {
       const { stdout } = await execa('git', ['worktree', 'list'], { cwd: baseRepo });
       expect(stdout).toContain(worktreeDir);
       expect(stdout).toContain('[feature/special-chars-123]');
+    });
+  });
+
+  describe('SecurityValidator.validateBranchName', () => {
+    test('accepts valid branch names', () => {
+      expect(() => SecurityValidator.validateBranchName('main')).not.toThrow();
+      expect(() => SecurityValidator.validateBranchName('feature/user-auth')).not.toThrow();
+      expect(() => SecurityValidator.validateBranchName('fix-bug-123')).not.toThrow();
+      expect(() => SecurityValidator.validateBranchName('dev_branch')).not.toThrow();
+      expect(() => SecurityValidator.validateBranchName('release-v1.0.0')).not.toThrow();
+    });
+
+    test('rejects branch names with path traversal', () => {
+      expect(() => SecurityValidator.validateBranchName('../etc/passwd')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('feature/../../../etc/passwd')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('../../malicious')).toThrow('Invalid branch name: contains dangerous characters');
+    });
+
+    test('rejects branch names with option injection', () => {
+      expect(() => SecurityValidator.validateBranchName('-rf')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('--delete-everything')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('-exec rm -rf /')).toThrow('Invalid branch name: contains dangerous characters');
+    });
+
+    test('rejects branch names with shell metacharacters', () => {
+      expect(() => SecurityValidator.validateBranchName('branch; rm -rf /')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('branch && malicious')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('branch | evil')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('branch`command`')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('branch$(cmd)')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('branch{test}')).toThrow('Invalid branch name: contains dangerous characters');
+    });
+
+    test('rejects branch names with control characters', () => {
+      expect(() => SecurityValidator.validateBranchName('branch\x00null')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('branch\x1b[31mred')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('branch\nnewline')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('branch\ttab')).toThrow('Invalid branch name: contains dangerous characters');
+    });
+
+    test('rejects branch names with internal whitespace', () => {
+      expect(() => SecurityValidator.validateBranchName('branch name')).toThrow('Invalid branch name: contains dangerous characters');
+    });
+
+    test('handles leading and trailing whitespace by trimming', () => {
+      // Leading and trailing whitespace should be trimmed and result validated
+      expect(() => SecurityValidator.validateBranchName(' valid-branch')).not.toThrow();
+      expect(() => SecurityValidator.validateBranchName('valid-branch ')).not.toThrow();
+      expect(() => SecurityValidator.validateBranchName(' valid-branch ')).not.toThrow();
+      
+      // But empty after trimming should fail
+      expect(() => SecurityValidator.validateBranchName('   ')).toThrow('Invalid branch name format');
+    });
+
+    test('rejects branch names with reflog syntax', () => {
+      expect(() => SecurityValidator.validateBranchName('branch@{yesterday}')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('HEAD@{1}')).toThrow('Invalid branch name: contains dangerous characters');
+    });
+
+    test('rejects branch names that are too long', () => {
+      const longBranch = 'a'.repeat(256);
+      expect(() => SecurityValidator.validateBranchName(longBranch)).toThrow('Branch name too long');
+    });
+
+    test('rejects branch names with invalid format', () => {
+      expect(() => SecurityValidator.validateBranchName('')).toThrow('Invalid branch name format');
+      expect(() => SecurityValidator.validateBranchName('a')).toThrow('Invalid branch name format');  // Too short
+      expect(() => SecurityValidator.validateBranchName('-invalid-start')).toThrow('Invalid branch name: contains dangerous characters');
+      expect(() => SecurityValidator.validateBranchName('invalid-end-')).toThrow('Invalid branch name format');
+      expect(() => SecurityValidator.validateBranchName('.invalid-start')).toThrow('Invalid branch name format');
+    });
+
+    test('handles empty or null input', () => {
+      expect(() => SecurityValidator.validateBranchName('')).toThrow('Invalid branch name format');
+      expect(() => SecurityValidator.validateBranchName('   ')).toThrow('Invalid branch name format');
+    });
+  });
+
+  describe('Security and Error Handling', () => {
+    test('discoverRepos handles path traversal attacks', async () => {
+      // These should be handled gracefully, returning empty arrays
+      const repos1 = await discoverRepos('../../../etc');
+      expect(Array.isArray(repos1)).toBe(true);
+
+      const repos2 = await discoverRepos('/etc/../../../secret');
+      expect(Array.isArray(repos2)).toBe(true);
+    });
+
+    test('currentBranch handles path traversal in repo path', async () => {
+      // Should return fallback 'main' for invalid paths
+      const branch = await currentBranch('../../../etc/passwd');
+      expect(branch).toBe('main');
+    });
+
+    test('addWorktree rejects malicious branch names', async () => {
+      const baseRepo = join(testDir, 'base-repo');
+      mkdirSync(baseRepo);
+      
+      // Initialize base repo
+      await execa('git', ['init'], { cwd: baseRepo });
+      await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: baseRepo });
+      await execa('git', ['config', 'user.name', 'Test User'], { cwd: baseRepo });
+      
+      // Create initial commit
+      writeFileSync(join(baseRepo, 'README.md'), '# Base Repo');
+      await execa('git', ['add', '.'], { cwd: baseRepo });
+      await execa('git', ['commit', '-m', 'Initial commit'], { cwd: baseRepo });
+
+      const worktreeDir = join(testDir, 'test-worktree');
+
+      // Test various malicious branch names
+      await expect(addWorktree(baseRepo, '../../../etc/passwd', worktreeDir))
+        .rejects.toThrow('Invalid branch name: contains dangerous characters');
+
+      await expect(addWorktree(baseRepo, 'branch; rm -rf /', worktreeDir))
+        .rejects.toThrow('Invalid branch name: contains dangerous characters');
+
+      await expect(addWorktree(baseRepo, 'branch && evil', worktreeDir))
+        .rejects.toThrow('Invalid branch name: contains dangerous characters');
+
+      await expect(addWorktree(baseRepo, '-delete-flag', worktreeDir))
+        .rejects.toThrow('Invalid branch name: contains dangerous characters');
+    });
+
+    test('addWorktree handles path traversal in paths', async () => {
+      const baseRepo = join(testDir, 'base-repo');
+      mkdirSync(baseRepo);
+      
+      // Initialize base repo
+      await execa('git', ['init'], { cwd: baseRepo });
+      await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: baseRepo });
+      await execa('git', ['config', 'user.name', 'Test User'], { cwd: baseRepo });
+      
+      // Create initial commit
+      writeFileSync(join(baseRepo, 'README.md'), '# Base Repo');
+      await execa('git', ['add', '.'], { cwd: baseRepo });
+      await execa('git', ['commit', '-m', 'Initial commit'], { cwd: baseRepo });
+
+      // Create a valid branch
+      await execa('git', ['checkout', '-b', 'test-branch'], { cwd: baseRepo });
+      await execa('git', ['checkout', 'main'], { cwd: baseRepo });
+
+      // Test path traversal in base repo path
+      await expect(addWorktree('../../etc/passwd', 'test-branch', join(testDir, 'worktree')))
+        .rejects.toThrow('Path traversal detected');
+
+      // Test path traversal in worktree path
+      await expect(addWorktree(baseRepo, 'test-branch', '../../../etc/passwd'))
+        .rejects.toThrow('Path traversal detected');
+    });
+
+    test('addWorktree handles git command failures', async () => {
+      const baseRepo = join(testDir, 'base-repo');
+      mkdirSync(baseRepo);
+      
+      // Initialize base repo
+      await execa('git', ['init'], { cwd: baseRepo });
+      await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: baseRepo });
+      await execa('git', ['config', 'user.name', 'Test User'], { cwd: baseRepo });
+      
+      // Create initial commit
+      writeFileSync(join(baseRepo, 'README.md'), '# Base Repo');
+      await execa('git', ['add', '.'], { cwd: baseRepo });
+      await execa('git', ['commit', '-m', 'Initial commit'], { cwd: baseRepo });
+
+      const worktreeDir = join(testDir, 'test-worktree');
+
+      // Test creating worktree for non-existent branch
+      await expect(addWorktree(baseRepo, 'non-existent-branch', worktreeDir))
+        .rejects.toThrow();
+
+      // Test creating worktree in existing directory
+      mkdirSync(worktreeDir);
+      writeFileSync(join(worktreeDir, 'conflict.txt'), 'existing file');
+
+      await expect(addWorktree(baseRepo, 'main', worktreeDir))
+        .rejects.toThrow();
+    });
+
+    test('git operations handle corrupted repositories', async () => {
+      const corruptRepo = join(testDir, 'corrupt-repo');
+      mkdirSync(corruptRepo);
+      
+      // Create a fake .git directory without proper structure
+      const gitDir = join(corruptRepo, '.git');
+      mkdirSync(gitDir);
+      writeFileSync(join(gitDir, 'invalid'), 'not a real git repo');
+
+      // Operations should handle corruption gracefully
+      const branch = await currentBranch(corruptRepo);
+      expect(branch).toBe('main'); // Should fall back to default
+
+      const repos = await discoverRepos(testDir);
+      // May or may not include the corrupt repo, but should not crash
+      expect(Array.isArray(repos)).toBe(true);
     });
   });
 });

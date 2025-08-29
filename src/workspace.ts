@@ -6,7 +6,9 @@ import { ensureWorkspaceSkeleton, primeNodeModules, copyEnvFiles } from './fsops
 import { addWorktree } from './git.js';
 import { detectPM } from './pm.js';
 import { ui } from './ui.js';
+import { SecurityValidator, ErrorUtils } from './utils/security.js';
 import type { RepoPick, RepoMounted } from './types.js';
+
 
 /**
  * Creates a complete workspace with worktrees for selected repositories.
@@ -51,7 +53,7 @@ export async function createWorkspace(repoPicks: RepoPick[]): Promise<{
   // Generate unique workspace name with timestamp
   const timestamp = Date.now().toString(36);
   const wsName = `ccws-${timestamp}`;
-  const wsDir = resolve(wsName);
+  const wsDir = SecurityValidator.validatePath(wsName);
   
   ui.info(`Creating workspace: ${wsName}`);
   
@@ -103,7 +105,7 @@ export async function createWorkspace(repoPicks: RepoPick[]): Promise<{
       };
       
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = ErrorUtils.extractErrorMessage(error);
       ui.error(`Failed to mount ${pick.alias}: ${errorMessage}`);
       ui.warning(`Skipping ${pick.alias} and continuing with remaining repositories...`);
       return null;
@@ -158,6 +160,175 @@ export async function createWorkspace(repoPicks: RepoPick[]): Promise<{
 }
 
 /**
+ * Creates .factpack.txt files in each repository with metadata for Claude CLI.
+ * 
+ * Factpack files contain repository information that helps Claude generate
+ * better workspace documentation by providing context about each repository.
+ * 
+ * @param repos - Array of mounted repository configurations
+ * @returns Promise that resolves when all factpacks are created
+ */
+async function createFactpackFiles(repos: RepoMounted[]): Promise<void> {
+  ui.info('Creating factpack files for repositories...');
+  
+  for (const repo of repos) {
+    try {
+      const pkg = await readJson(
+        join(repo.worktreePath, 'package.json')
+      );
+      
+      const facts = [
+        `Alias: ${repo.alias}`,
+        `Package: ${pkg.name || 'unknown'}`,
+        `Branch: ${repo.branch}`,
+        `PM: ${repo.packageManager}`,
+        'Scripts:',
+        ...Object.keys(pkg.scripts || {}).map(s => `  - ${s}`)
+      ];
+      
+      await writeFile(
+        join(repo.worktreePath, '.factpack.txt'),
+        facts.join('\n')
+      );
+      
+      ui.info(`✓ Created factpack for ${repo.alias}`);
+    } catch (error) {
+      ui.warning(`Failed to create factpack for ${repo.alias}: ${ErrorUtils.extractErrorMessage(error)}`);
+    }
+  }
+}
+
+/**
+ * Generates the prompt text for Claude CLI workspace documentation.
+ * 
+ * @param repos - Array of mounted repository configurations
+ * @returns Formatted prompt string for Claude CLI
+ */
+function generateWorkspacePrompt(repos: RepoMounted[]): string {
+  return `Generate a CLAUDE.md workspace guide.
+  
+Repos:
+${repos.map(r => `- ${r.alias}: ${r.branch}`).join('\n')}
+
+Include:
+- Available commands (npm run <alias>:*)
+- How to start dev mode
+- Repo responsibilities
+  
+Keep it under 100 lines.`;
+}
+
+/**
+ * Generates fallback CLAUDE.md template when Claude CLI is unavailable.
+ * 
+ * @param repos - Array of mounted repository configurations
+ * @returns Markdown content for fallback template
+ */
+function generateFallbackTemplate(repos: RepoMounted[]): string {
+  return `# Claude Code Workspace
+
+## Repositories
+${repos.map(r => `- **${r.alias}**: ${r.branch}`).join('\n')}
+
+## Commands
+Run from workspace root:
+- \`npm run dev\` - Start all repos in dev mode
+${repos.map(r => `- \`npm run ${r.alias}:dev\` - Start ${r.alias} only`).join('\n')}
+
+## Getting Started
+1. \`npm install\`
+2. \`npm run dev\`
+
+## Repository Details
+${repos.map(r => `### ${r.alias}
+- **Branch**: ${r.branch}
+- **Package Manager**: ${r.packageManager}
+- **Location**: repos/${r.alias}/
+`).join('\n')}
+
+*This file was generated using a fallback template due to Claude CLI unavailability.*
+`;
+}
+
+/**
+ * Attempts to generate CLAUDE.md using Claude CLI with optional streaming support.
+ * 
+ * @param prompt - The prompt to send to Claude CLI
+ * @param wsDir - Workspace directory to save the output
+ * @returns Promise that resolves to true if successful, false if failed
+ */
+async function tryClaudeCliGeneration(prompt: string, wsDir: string): Promise<boolean> {
+  try {
+    // Sanitize and validate CLAUDE_CLI_ARGS to prevent injection
+    const sanitizedArgs = SecurityValidator.sanitizeCliArgs(process.env.CLAUDE_CLI_ARGS);
+    
+    // Invoke Claude CLI with streaming - use direct args instead of env var
+    const args = ['code', '--non-interactive', ...sanitizedArgs];
+    const child = execa('claude', args, {
+      shell: false, // Prevent shell injection
+      env: { 
+        ...process.env,
+        CLAUDE_SAFE_MODE: '1' // Add safety flag
+      }
+    });
+    
+    // Try to use @agent-io/stream if available with safe dynamic import
+    try {
+      // Safe dynamic import for optional dependency
+      let agentIoModule: unknown = null;
+      try {
+        const moduleName = '@agent-io/stream';
+        agentIoModule = await import(moduleName);
+      } catch {
+        // Module not available, will fall back to basic stdout
+        agentIoModule = null;
+      }
+      
+      if (agentIoModule && 
+          typeof agentIoModule === 'object' && 
+          'createStreamRenderer' in agentIoModule && 
+          typeof (agentIoModule as { createStreamRenderer: unknown }).createStreamRenderer === 'function') {
+        const moduleWithRenderer = agentIoModule as { createStreamRenderer: (options: { onText: (text: string) => void }) => { push: (data: string) => void } | null };
+        const renderer = moduleWithRenderer.createStreamRenderer({
+          onText: (t: string) => process.stdout.write(t)
+        });
+        
+        if (renderer && typeof renderer.push === 'function') {
+          child.stdout?.on('data', (buf: Buffer) => {
+            renderer.push(buf.toString());
+          });
+          ui.info('Using @agent-io/stream for enhanced output rendering');
+        } else {
+          throw new Error('Invalid renderer object from @agent-io/stream');
+        }
+      } else {
+        throw new Error('@agent-io/stream createStreamRenderer not available');
+      }
+    } catch (error) {
+      // Fallback: pipe directly to stdout
+      child.stdout?.pipe(process.stdout);
+      ui.info(`Using direct output streaming (fallback mode): ${error instanceof Error ? error.message : 'Stream module unavailable'}`);
+    }
+    
+    // Send prompt to Claude CLI
+    child.stdin?.write(prompt);
+    child.stdin?.end();
+    
+    // Wait for completion and save result
+    const { stdout } = await child;
+    await writeFile(join(wsDir, 'CLAUDE.md'), stdout);
+    ui.success('✓ CLAUDE.md generated successfully via Claude CLI');
+    
+    return true;
+  } catch (error) {
+    // Sanitize error message to prevent information disclosure
+    const sanitizedError = SecurityValidator.sanitizeErrorMessage(error);
+    ui.warning(`Claude CLI failed, using fallback template: ${sanitizedError}`);
+    return false;
+  }
+}
+
+/**
  * Generates a comprehensive CLAUDE.md workspace guide using Claude CLI.
  * 
  * This function creates factpack files for each repository and invokes the Claude CLI
@@ -204,128 +375,19 @@ export async function generateClaudeMd(
   wsDir: string, 
   repos: RepoMounted[]
 ): Promise<void> {
-  ui.info('Creating factpack files for repositories...');
-  
-  // Create factpacks for each repo
-  for (const repo of repos) {
-    try {
-      const pkg = await readJson(
-        join(repo.worktreePath, 'package.json')
-      );
-      
-      const facts = [
-        `Alias: ${repo.alias}`,
-        `Package: ${pkg.name || 'unknown'}`,
-        `Branch: ${repo.branch}`,
-        `PM: ${repo.packageManager}`,
-        'Scripts:',
-        ...Object.keys(pkg.scripts || {}).map(s => `  - ${s}`)
-      ];
-      
-      await writeFile(
-        join(repo.worktreePath, '.factpack.txt'),
-        facts.join('\n')
-      );
-      
-      ui.info(`✓ Created factpack for ${repo.alias}`);
-    } catch (error) {
-      ui.warning(`Failed to create factpack for ${repo.alias}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
+  // Step 1: Create factpack files for each repository
+  await createFactpackFiles(repos);
 
-  // Generate prompt for Claude CLI
-  const prompt = `Generate a CLAUDE.md workspace guide.
-  
-Repos:
-${repos.map(r => `- ${r.alias}: ${r.branch}`).join('\n')}
+  // Step 2: Generate the prompt for Claude CLI
+  const prompt = generateWorkspacePrompt(repos);
 
-Include:
-- Available commands (npm run <alias>:*)
-- How to start dev mode
-- Repo responsibilities
-  
-Keep it under 100 lines.`;
-
+  // Step 3: Attempt to generate using Claude CLI
   ui.info('Generating CLAUDE.md via Claude CLI...');
+  const success = await tryClaudeCliGeneration(prompt, wsDir);
 
-  try {
-    // Invoke Claude CLI with streaming
-    const child = execa('claude', ['code', '--non-interactive'], {
-      env: {
-        ...process.env,
-        ...(process.env.CLAUDE_CLI_ARGS ? {
-          CLAUDE_CLI_ARGS: process.env.CLAUDE_CLI_ARGS
-        } : {})
-      }
-    });
-    
-    // Try to use @agent-io/stream if available with safe dynamic import
-    let streamHandler: { push: (data: string) => void } | null = null;
-    try {
-      // Safe dynamic import for optional dependency - use string concatenation to avoid TypeScript static analysis
-      const moduleName = '@agent-io' + '/' + 'stream';
-      const agentIoModule = await import(moduleName).catch(() => null);
-      
-      if (agentIoModule?.createStreamRenderer && typeof agentIoModule.createStreamRenderer === 'function') {
-        const renderer = agentIoModule.createStreamRenderer({
-          onText: (t: string) => process.stdout.write(t)
-        });
-        
-        if (renderer && typeof renderer.push === 'function') {
-          streamHandler = renderer;
-          child.stdout?.on('data', (buf: Buffer) => {
-            renderer.push(buf.toString());
-          });
-          ui.info('Using @agent-io/stream for enhanced output rendering');
-        } else {
-          throw new Error('Invalid renderer object from @agent-io/stream');
-        }
-      } else {
-        throw new Error('@agent-io/stream createStreamRenderer not available');
-      }
-    } catch (error) {
-      // Fallback: pipe directly to stdout
-      child.stdout?.pipe(process.stdout);
-      ui.info(`Using direct output streaming (fallback mode): ${error instanceof Error ? error.message : 'Stream module unavailable'}`);
-    }
-    
-    // Send prompt to Claude CLI
-    child.stdin?.write(prompt);
-    child.stdin?.end();
-    
-    // Wait for completion and save result
-    const { stdout } = await child;
-    await writeFile(join(wsDir, 'CLAUDE.md'), stdout);
-    ui.success('✓ CLAUDE.md generated successfully via Claude CLI');
-    
-  } catch (error) {
-    ui.warning('Claude CLI failed, using fallback template');
-    
-    // Fallback: write a basic template
-    const fallback = `# Claude Code Workspace
-
-## Repositories
-${repos.map(r => `- **${r.alias}**: ${r.branch}`).join('\n')}
-
-## Commands
-Run from workspace root:
-- \`npm run dev\` - Start all repos in dev mode
-${repos.map(r => `- \`npm run ${r.alias}:dev\` - Start ${r.alias} only`).join('\n')}
-
-## Getting Started
-1. \`npm install\`
-2. \`npm run dev\`
-
-## Repository Details
-${repos.map(r => `### ${r.alias}
-- **Branch**: ${r.branch}
-- **Package Manager**: ${r.packageManager}
-- **Location**: repos/${r.alias}/
-`).join('\n')}
-
-*This file was generated using a fallback template due to Claude CLI unavailability.*
-`;
-    
+  // Step 4: Use fallback template if Claude CLI failed
+  if (!success) {
+    const fallback = generateFallbackTemplate(repos);
     await writeFile(join(wsDir, 'CLAUDE.md'), fallback);
     ui.success('✓ CLAUDE.md created with fallback template');
   }
