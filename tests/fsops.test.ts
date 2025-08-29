@@ -1,15 +1,15 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { ensureWorkspaceSkeleton, primeNodeModules, copyEnvFiles } from '../src/fsops.js';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync, symlinkSync } from 'fs';
+import { rmSync, writeFileSync, mkdirSync, readFileSync, existsSync, symlinkSync } from 'fs';
 import { join } from 'path';
-import { tmpdir } from 'os';
 import { execa } from 'execa';
+import { createTestDir } from './utils/testDir.js';
 
 describe('File System Operations', () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = mkdtempSync(join(tmpdir(), 'fsops-test-'));
+    testDir = createTestDir('fsops-test', expect.getState().currentTestName);
   });
 
   afterEach(() => {

@@ -104,7 +104,7 @@ describe('Main CLI Workflow', () => {
       new prompts.UserCancelledError('User cancelled selection')
     );
     
-    await expect(main()).rejects.toThrow('Process exited with code 1');
+    await expect(main()).rejects.toThrow(errorMatchers.processExit(1));
     
     expect(prompts.getUserSelections).toHaveBeenCalledOnce();
     
@@ -261,7 +261,7 @@ describe('Main CLI Workflow', () => {
       throw new Error('Process exited with code 1');
     });
     
-    await expect(main()).rejects.toThrow('Process exited with code 1');
+    await expect(main()).rejects.toThrow(errorMatchers.processExit(1));
     
     // For non-Error objects, handleError calls ui.error directly, not handlePromptError
     expect(prompts.handlePromptError).not.toHaveBeenCalled();

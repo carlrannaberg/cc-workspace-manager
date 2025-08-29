@@ -7,7 +7,7 @@
 export { createTestDir, TestDirManager } from './testDir.js';
 
 // Error assertion patterns
-export { errorMatchers, expectAsyncError } from './errorMatchers.js';
+export { errorMatchers, expectPromiseRejection } from './errorMatchers.js';
 
 // Test data fixtures
 export { packageFixtures, createPackageJson } from '../fixtures/packageJsonFixtures.js';

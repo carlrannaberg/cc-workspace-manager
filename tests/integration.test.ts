@@ -10,6 +10,7 @@ import { detectPM } from '../src/pm.js';
 import type { RepoPick, RepoMounted } from '../src/types.js';
 import { createTestDir } from './utils/testDir.js';
 import { createPackageJson, packageFixtures } from './fixtures/packageJsonFixtures.js';
+import { errorMatchers } from './utils/errorMatchers.js';
 
 
 describe('Integration Tests - Complete Workspace Generation', () => {
@@ -307,7 +308,7 @@ describe('Integration Tests - Complete Workspace Generation', () => {
         { alias: 'invalid2', basePath: '/non/existent/path2', branch: 'main' }
       ];
       
-      await expect(createWorkspace(repoPicks)).rejects.toThrow('No repositories were successfully mounted');
+      await expect(createWorkspace(repoPicks)).rejects.toThrow(errorMatchers.noRepositoriesFound);
     });
 
     test('handles repositories without node_modules gracefully', async () => {
@@ -601,10 +602,7 @@ Happy coding!`;
       await execa('git', ['config', 'user.name', 'Test'], { cwd: mainRepo });
       
       // Create main branch content
-      writeFileSync(join(mainRepo, 'package.json'), JSON.stringify({
-        name: 'main-app',
-        scripts: { dev: 'vite', build: 'vite build' }
-      }));
+      createPackageJson(mainRepo, 'simple');
       
       mkdirSync(join(mainRepo, 'node_modules', 'vite'), { recursive: true });
       writeFileSync(join(mainRepo, '.env'), 'VITE_API_URL=http://localhost:3000');
@@ -629,11 +627,7 @@ Happy coding!`;
       await execa('git', ['config', 'user.email', 'test@test.com'], { cwd: apiRepo });
       await execa('git', ['config', 'user.name', 'Test'], { cwd: apiRepo });
       
-      writeFileSync(join(apiRepo, 'package.json'), JSON.stringify({
-        name: 'api-server',
-        packageManager: 'pnpm@8.0.0',
-        scripts: { dev: 'nodemon server.js', start: 'node server.js' }
-      }));
+      createPackageJson(apiRepo, 'expressBackend');
       
       writeFileSync(join(apiRepo, 'pnpm-lock.yaml'), 'lockfileVersion: 5.4');
       mkdirSync(join(apiRepo, 'node_modules', 'nodemon'), { recursive: true });

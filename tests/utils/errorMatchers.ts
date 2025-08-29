@@ -16,6 +16,13 @@ export const errorMatchers = {
     message: expect.stringContaining(`Process exited with code ${code}`)
   }),
 
+  // Specific application errors
+  noRepositoriesFound: expect.objectContaining({
+    message: expect.stringMatching(/No git repositories found in|No repositories were successfully mounted/i)
+  }),
+
+  userCancelledError: expect.any(Error),
+
   // Generic helpers
   anyErrorWithMessage: (pattern: string | RegExp) => expect.objectContaining({
     message: typeof pattern === 'string' 
@@ -27,7 +34,7 @@ export const errorMatchers = {
 /**
  * Enhanced test utilities for error assertions
  */
-export function expectAsyncError<T>(
+export function expectPromiseRejection<T>(
   promise: Promise<T>, 
   matcher: ReturnType<typeof expect.objectContaining> | typeof expect.any
 ): Promise<void> {

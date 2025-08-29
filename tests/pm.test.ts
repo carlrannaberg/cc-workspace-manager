@@ -1,14 +1,14 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { detectPM, pmRun } from '../src/pm.js';
-import { mkdtempSync, writeFileSync, rmSync } from 'fs';
+import { writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
-import { tmpdir } from 'os';
+import { createTestDir } from './utils/testDir.js';
 
 describe('Package Manager Detection', () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = mkdtempSync(join(tmpdir(), 'pm-test-'));
+    testDir = createTestDir('pm-test', expect.getState().currentTestName);
   });
 
   afterEach(() => {

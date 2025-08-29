@@ -40,8 +40,11 @@ export class TestDirManager {
     for (const path of this.cleanupPaths) {
       try {
         rmSync(path, { recursive: true, force: true });
-      } catch {
-        // Ignore cleanup errors
+      } catch (error) {
+        // Test cleanup failures are acceptable but preserve error context for debugging
+        if (process.env.NODE_ENV === 'development' || process.env.VITEST_DEBUG) {
+          console.warn(`Test cleanup warning for ${path}: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
     }
     this.cleanupPaths = [];

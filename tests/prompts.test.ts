@@ -3,6 +3,7 @@ import * as inquirerPrompts from '@inquirer/prompts';
 import { getUserSelections, UserCancelledError, handlePromptError } from '../src/prompts.js';
 import * as git from '../src/git.js';
 import * as ui from '../src/ui.js';
+import { errorMatchers } from './utils/errorMatchers.js';
 
 // Type definitions for inquirer prompt options
 interface InputOptions {
@@ -170,7 +171,7 @@ describe('User Prompts', () => {
     vi.mocked(git.discoverRepos).mockResolvedValue([]);
     vi.mocked(inquirerPrompts.input).mockResolvedValue('/empty/dir');
     
-    await expect(getUserSelections()).rejects.toThrow('No git repositories found in /empty/dir');
+    await expect(getUserSelections()).rejects.toThrow(errorMatchers.noRepositoriesFound);
     
     expect(ui.ui.noReposFound).toHaveBeenCalledWith('/empty/dir');
   });
