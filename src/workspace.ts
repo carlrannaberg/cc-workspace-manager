@@ -258,104 +258,61 @@ ${repos.map(r => `### ${r.alias}
  * @returns Promise that resolves to true if successful, false if failed
  */
 async function tryClaudeCliGeneration(prompt: string, wsDir: string): Promise<boolean> {
-  // Sanitize and validate CLAUDE_CLI_ARGS to prevent injection
-  const sanitizedArgs = SecurityValidator.sanitizeCliArgs(process.env.CLAUDE_CLI_ARGS);
-
-  // Prefer streaming JSON; fall back to plain print
-  const hasOutputFormat = sanitizedArgs.includes('--output-format');
-  const streamArgs = hasOutputFormat
-    ? ['-p', ...sanitizedArgs, prompt]
-    : ['-p', '--output-format', 'stream-json', ...sanitizedArgs, prompt];
-  const printArgs = ['-p', ...sanitizedArgs, prompt];
-
-  const timeoutMs = Number(process.env.CCWS_CLAUDE_TIMEOUT_MS) || (process.env.VITEST ? 4000 : 300000);
-
-  // Try variants in order
-  for (const args of [streamArgs, printArgs]) {
-    try {
-      const useStreamJson = args.includes('stream-json');
-      let collected = '';
-
-      if (useStreamJson) {
-        // Use external aio-stream via npx if available; fall back to inline NDJSON parsing
-        const claude = execa('claude', args, { shell: false, timeout: timeoutMs });
-        try {
-          // First attempt: npx aio-stream
-          const streamer = execa('npx', ['-y', 'aio-stream'], { shell: false, timeout: timeoutMs });
-          // Pipe Claude stream into streamer
-          claude.stdout?.pipe(streamer.stdin!);
-          streamer.stdout?.on('data', (buf: Buffer) => {
-            const text = buf.toString();
-            collected += text;
-            process.stdout.write(text);
-          });
-          await Promise.all([claude, streamer]);
-        } catch {
-          try {
-            // Second attempt: npx @agent-io/stream (package name)
-            const claude2 = execa('claude', args, { shell: false, timeout: timeoutMs });
-            const streamer2 = execa('npx', ['-y', '@agent-io/stream'], { shell: false, timeout: timeoutMs });
-            claude2.stdout?.pipe(streamer2.stdin!);
-            streamer2.stdout?.on('data', (buf: Buffer) => {
-              const text = buf.toString();
-              collected += text;
-              process.stdout.write(text);
-            });
-            await Promise.all([claude2, streamer2]);
-          } catch {
-            // Final fallback: minimal NDJSON parsing in-process
-            const claude3 = execa('claude', args, { shell: false, timeout: timeoutMs });
-            let lineBuffer = '';
-            claude3.stdout?.on('data', (buf: Buffer) => {
-              lineBuffer += buf.toString();
-              let idx;
-              while ((idx = lineBuffer.indexOf('\n')) !== -1) {
-                const line = lineBuffer.slice(0, idx);
-                lineBuffer = lineBuffer.slice(idx + 1);
-                try {
-                  if (!line.trim()) continue;
-                  const evt = JSON.parse(line);
-                  const text = typeof evt?.text === 'string' ? evt.text
-                    : typeof evt?.delta === 'string' ? evt.delta
-                    : typeof evt?.content === 'string' ? evt.content
-                    : '';
-                  if (text) {
-                    collected += text;
-                    process.stdout.write(text);
-                  }
-                } catch {
-                  // ignore
-                }
-              }
-            });
-            await claude3;
-          }
-        }
-      } else {
-        // Plain print mode
-        const { stdout } = await execa('claude', args, { shell: false, timeout: timeoutMs });
-        collected = stdout;
-      }
-
-      await writeFile(join(wsDir, 'CLAUDE.md'), collected);
-      ui.success('✓ CLAUDE.md generated successfully via Claude CLI');
-      return true;
-    } catch (error) {
-      const message = ErrorUtils.extractErrorMessage(error).toLowerCase();
-      if (message.includes('unknown option') || message.includes('unrecognized option')) {
-        continue; // try next variant
-      }
-      if (message.includes('timed out')) {
-        ui.warning('Claude CLI timed out; using fallback template');
-        break;
-      }
-      ui.warning(`Claude CLI failed for args [${args.join(' ')}]: ${SecurityValidator.sanitizeErrorMessage(error)}`);
-      break;
-    }
+  // Skip Claude CLI entirely in test environment to avoid timeouts and complexity
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') {
+    ui.info('Test environment detected; skipping Claude CLI generation');
+    return false;
   }
 
-  ui.warning('Claude CLI unavailable or incompatible; using fallback template');
-  return false;
+  const timeoutMs = Number(process.env.CCWS_CLAUDE_TIMEOUT_MS) || 300000;
+  
+  // Sanitize and validate CLAUDE_CLI_ARGS to prevent injection
+  const sanitizedArgs = SecurityValidator.sanitizeCliArgs(process.env.CLAUDE_CLI_ARGS);
+  
+  // Build base Claude CLI args
+  const baseArgs = ['-p', prompt, '--output-format', 'stream-json', '--verbose', ...sanitizedArgs];
+  
+  try {
+    // First attempt: Use proper streaming with @agent-io/stream
+    const command = `claude ${baseArgs.map(arg => arg.includes(' ') ? `"${arg}"` : arg).join(' ')} | npx -y @agent-io/stream`;
+    ui.info(`Running: ${command}`);
+    
+    const { stdout } = await execa('sh', ['-c', command], {
+      timeout: timeoutMs,
+      stdio: ['ignore', 'pipe', 'inherit']
+    });
+    
+    await writeFile(join(wsDir, 'CLAUDE.md'), stdout);
+    ui.success('✓ CLAUDE.md generated successfully via Claude CLI with streaming');
+    return true;
+    
+  } catch (error) {
+    const message = ErrorUtils.extractErrorMessage(error).toLowerCase();
+    
+    if (message.includes('timed out')) {
+      ui.warning('Claude CLI timed out; using fallback template');
+      return false;
+    }
+    
+    ui.warning(`Streaming failed: ${SecurityValidator.sanitizeErrorMessage(error)}`);
+    
+    // Fallback: Try without streaming
+    try {
+      const fallbackArgs = ['-p', prompt, ...sanitizedArgs];
+      const { stdout } = await execa('claude', fallbackArgs, {
+        timeout: timeoutMs,
+        shell: false
+      });
+      
+      await writeFile(join(wsDir, 'CLAUDE.md'), stdout);
+      ui.success('✓ CLAUDE.md generated successfully via Claude CLI (non-streaming)');
+      return true;
+      
+    } catch (fallbackError) {
+      ui.warning(`Claude CLI failed: ${SecurityValidator.sanitizeErrorMessage(fallbackError)}`);
+      return false;
+    }
+  }
 }
 
 /**
