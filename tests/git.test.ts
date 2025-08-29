@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { currentBranch, discoverRepos, addWorktree } from '../src/git.js';
 import { SecurityValidator } from '../src/utils/security.js';
-import { rmSync, writeFileSync, mkdirSync } from 'fs';
+import { rmSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { execa } from 'execa';
 import { createTestDir } from './utils/testDir.js';
@@ -450,15 +450,16 @@ describe('Git Operations', () => {
 
       const worktreeDir = join(testDir, 'test-worktree');
 
-      // Test creating worktree for non-existent branch
-      await expect(addWorktree(baseRepo, 'non-existent-branch', worktreeDir))
-        .rejects.toThrow();
+      // Test creating worktree for non-existent branch now creates a new branch from base
+      await addWorktree(baseRepo, 'non-existent-branch', worktreeDir);
+      expect(existsSync(worktreeDir)).toBe(true);
 
-      // Test creating worktree in existing directory
-      mkdirSync(worktreeDir);
-      writeFileSync(join(worktreeDir, 'conflict.txt'), 'existing file');
+      // Test creating worktree in existing directory should still fail
+      const conflictDir = join(testDir, 'conflict-worktree');
+      mkdirSync(conflictDir);
+      writeFileSync(join(conflictDir, 'conflict.txt'), 'existing file');
 
-      await expect(addWorktree(baseRepo, 'main', worktreeDir))
+      await expect(addWorktree(baseRepo, 'main', conflictDir))
         .rejects.toThrow();
     });
 

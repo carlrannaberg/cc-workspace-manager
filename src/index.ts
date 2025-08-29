@@ -5,6 +5,7 @@ import { createWorkspace, generateClaudeMd } from './workspace.js';
 import { generateRootPackageJson } from './package.js';
 import { ui } from './ui.js';
 import { ErrorUtils } from './utils/security.js';
+import { EnvironmentUtils } from './utils/environment.js';
 import fs from 'fs-extra';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -89,7 +90,7 @@ function showVersion(): void {
  */
 function handleError(error: unknown): never {
   // Check if we are in test environment
-  const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+  const isTest = EnvironmentUtils.isTestEnvironment();
   
   if (error instanceof Error) {
     handlePromptError(error);
@@ -188,6 +189,6 @@ async function main() {
 export { main };
 
 // Run if executed directly (but not in tests)
-if (process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') {
+if (!EnvironmentUtils.isTestEnvironment()) {
   main();
 }

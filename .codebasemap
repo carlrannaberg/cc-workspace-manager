@@ -2,9 +2,9 @@
   "metadata": {
     "version": 1,
     "root": "/Users/carl/Development/agents/cc-workspace-manager",
-    "createdAt": "2025-08-28T19:26:25.227Z",
-    "updatedAt": "2025-08-28T19:26:25.227Z",
-    "totalFiles": 17
+    "createdAt": "2025-08-29T21:34:59.991Z",
+    "updatedAt": "2025-08-29T21:34:59.991Z",
+    "totalFiles": 22
   },
   "tree": {
     "name": "cc-workspace-manager",
@@ -14,6 +14,16 @@
         "name": "src",
         "type": "dir",
         "children": [
+          {
+            "name": "utils",
+            "type": "dir",
+            "children": [
+              {
+                "name": "security.ts",
+                "type": "file"
+              }
+            ]
+          },
           {
             "name": "fsops.ts",
             "type": "file"
@@ -56,6 +66,34 @@
         "name": "tests",
         "type": "dir",
         "children": [
+          {
+            "name": "fixtures",
+            "type": "dir",
+            "children": [
+              {
+                "name": "packageJsonFixtures.ts",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "utils",
+            "type": "dir",
+            "children": [
+              {
+                "name": "errorMatchers.ts",
+                "type": "file"
+              },
+              {
+                "name": "index.ts",
+                "type": "file"
+              },
+              {
+                "name": "testDir.ts",
+                "type": "file"
+              }
+            ]
+          },
           {
             "name": "fsops.test.ts",
             "type": "file"
@@ -101,7 +139,9 @@
     "src/prompts.ts",
     "src/types.ts",
     "src/ui.ts",
+    "src/utils/security.ts",
     "src/workspace.ts",
+    "tests/fixtures/packageJsonFixtures.ts",
     "tests/fsops.test.ts",
     "tests/git.test.ts",
     "tests/index.test.ts",
@@ -109,6 +149,9 @@
     "tests/package.test.ts",
     "tests/pm.test.ts",
     "tests/prompts.test.ts",
+    "tests/utils/errorMatchers.ts",
+    "tests/utils/index.ts",
+    "tests/utils/testDir.ts",
     "vitest.config.ts"
   ],
   "edges": [
@@ -117,8 +160,16 @@
       "to": "src/ui.ts"
     },
     {
+      "from": "src/fsops.ts",
+      "to": "src/utils/security.ts"
+    },
+    {
       "from": "src/git.ts",
       "to": "src/ui.ts"
+    },
+    {
+      "from": "src/git.ts",
+      "to": "src/utils/security.ts"
     },
     {
       "from": "src/index.ts",
@@ -138,6 +189,10 @@
     },
     {
       "from": "src/index.ts",
+      "to": "src/utils/security.ts"
+    },
+    {
+      "from": "src/index.ts",
       "to": "src/workspace.ts"
     },
     {
@@ -153,6 +208,10 @@
       "to": "src/ui.ts"
     },
     {
+      "from": "src/pm.ts",
+      "to": "src/utils/security.ts"
+    },
+    {
       "from": "src/prompts.ts",
       "to": "src/git.ts"
     },
@@ -163,6 +222,10 @@
     {
       "from": "src/prompts.ts",
       "to": "src/ui.ts"
+    },
+    {
+      "from": "src/prompts.ts",
+      "to": "src/utils/security.ts"
     },
     {
       "from": "src/workspace.ts",
@@ -185,12 +248,32 @@
       "to": "src/ui.ts"
     },
     {
+      "from": "src/workspace.ts",
+      "to": "src/utils/security.ts"
+    },
+    {
       "from": "tests/fsops.test.ts",
       "to": "src/fsops.ts"
     },
     {
+      "from": "tests/fsops.test.ts",
+      "to": "tests/utils/testDir.ts"
+    },
+    {
       "from": "tests/git.test.ts",
       "to": "src/git.ts"
+    },
+    {
+      "from": "tests/git.test.ts",
+      "to": "src/utils/security.ts"
+    },
+    {
+      "from": "tests/git.test.ts",
+      "to": "tests/utils/errorMatchers.ts"
+    },
+    {
+      "from": "tests/git.test.ts",
+      "to": "tests/utils/testDir.ts"
     },
     {
       "from": "tests/index.test.ts",
@@ -213,6 +296,10 @@
       "to": "src/workspace.ts"
     },
     {
+      "from": "tests/index.test.ts",
+      "to": "tests/utils/errorMatchers.ts"
+    },
+    {
       "from": "tests/integration.test.ts",
       "to": "src/fsops.ts"
     },
@@ -233,6 +320,18 @@
       "to": "src/workspace.ts"
     },
     {
+      "from": "tests/integration.test.ts",
+      "to": "tests/fixtures/packageJsonFixtures.ts"
+    },
+    {
+      "from": "tests/integration.test.ts",
+      "to": "tests/utils/errorMatchers.ts"
+    },
+    {
+      "from": "tests/integration.test.ts",
+      "to": "tests/utils/testDir.ts"
+    },
+    {
       "from": "tests/package.test.ts",
       "to": "src/package.ts"
     },
@@ -245,6 +344,10 @@
       "to": "src/pm.ts"
     },
     {
+      "from": "tests/pm.test.ts",
+      "to": "tests/utils/testDir.ts"
+    },
+    {
       "from": "tests/prompts.test.ts",
       "to": "src/git.ts"
     },
@@ -255,6 +358,22 @@
     {
       "from": "tests/prompts.test.ts",
       "to": "src/ui.ts"
+    },
+    {
+      "from": "tests/prompts.test.ts",
+      "to": "tests/utils/errorMatchers.ts"
+    },
+    {
+      "from": "tests/utils/index.ts",
+      "to": "tests/fixtures/packageJsonFixtures.ts"
+    },
+    {
+      "from": "tests/utils/index.ts",
+      "to": "tests/utils/errorMatchers.ts"
+    },
+    {
+      "from": "tests/utils/index.ts",
+      "to": "tests/utils/testDir.ts"
     }
   ],
   "files": {
@@ -283,10 +402,15 @@
         {
           "from": "./ui.js",
           "kind": "import"
+        },
+        {
+          "from": "./utils/security.js",
+          "kind": "import"
         }
       ],
       "dependencies": [
-        "src/ui.ts"
+        "src/ui.ts",
+        "src/utils/security.ts"
       ],
       "functions": [],
       "classes": [],
@@ -336,12 +460,37 @@
           "imported": [
             "ui"
           ]
+        },
+        {
+          "from": "./utils/security.js",
+          "kind": "import",
+          "imported": [
+            "SecurityValidator"
+          ]
         }
       ],
       "dependencies": [
-        "src/ui.ts"
+        "src/ui.ts",
+        "src/utils/security.ts"
       ],
       "functions": [
+        {
+          "name": "scanDirGenerator",
+          "params": [
+            {
+              "name": "dir",
+              "type": "string"
+            },
+            {
+              "name": "depth",
+              "type": "number"
+            }
+          ],
+          "isAsync": true,
+          "isExported": false,
+          "returnType": "AsyncGenerator<string>",
+          "isGenerator": true
+        },
         {
           "name": "discoverRepos",
           "params": [
@@ -385,6 +534,22 @@
           "isAsync": true,
           "isExported": true,
           "returnType": "Promise<void>"
+        },
+        {
+          "name": "isBranchCheckedOut",
+          "params": [
+            {
+              "name": "repoPath",
+              "type": "string"
+            },
+            {
+              "name": "branch",
+              "type": "string"
+            }
+          ],
+          "isAsync": true,
+          "isExported": true,
+          "returnType": "Promise<boolean>"
         }
       ],
       "classes": [],
@@ -420,6 +585,10 @@
           "kind": "import"
         },
         {
+          "from": "./utils/security.js",
+          "kind": "import"
+        },
+        {
           "from": "fs-extra",
           "kind": "import"
         },
@@ -445,6 +614,7 @@
         "src/prompts.ts",
         "src/types.ts",
         "src/ui.ts",
+        "src/utils/security.ts",
         "src/workspace.ts"
       ],
       "functions": [],
@@ -499,9 +669,19 @@
           "imported": [
             "join"
           ]
+        },
+        {
+          "from": "./utils/security.js",
+          "kind": "import",
+          "imported": [
+            "SecurityValidator",
+            "ErrorUtils"
+          ]
         }
       ],
-      "dependencies": [],
+      "dependencies": [
+        "src/utils/security.ts"
+      ],
       "functions": [
         {
           "name": "detectPM",
@@ -562,7 +742,8 @@
           "kind": "import",
           "imported": [
             "discoverRepos",
-            "currentBranch"
+            "currentBranch",
+            "isBranchCheckedOut"
           ]
         },
         {
@@ -578,12 +759,21 @@
           "imported": [
             "ui"
           ]
+        },
+        {
+          "from": "./utils/security.js",
+          "kind": "import",
+          "imported": [
+            "ErrorUtils",
+            "SecurityValidator"
+          ]
         }
       ],
       "dependencies": [
         "src/git.ts",
         "src/types.ts",
-        "src/ui.ts"
+        "src/ui.ts",
+        "src/utils/security.ts"
       ],
       "functions": [
         {
@@ -643,39 +833,85 @@
         }
       ]
     },
-    "src/workspace.ts": {
+    "src/utils/security.ts": {
       "imports": [
         {
           "from": "path",
           "kind": "import"
+        }
+      ],
+      "dependencies": [],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "src/workspace.ts": {
+      "imports": [
+        {
+          "from": "path",
+          "kind": "import",
+          "imported": [
+            "resolve",
+            "join"
+          ]
         },
         {
           "from": "fs-extra",
-          "kind": "import"
+          "kind": "import",
+          "isDefault": true
         },
         {
           "from": "execa",
-          "kind": "import"
+          "kind": "import",
+          "imported": [
+            "execa"
+          ]
         },
         {
           "from": "./fsops.js",
-          "kind": "import"
+          "kind": "import",
+          "imported": [
+            "ensureWorkspaceSkeleton",
+            "primeNodeModules",
+            "copyEnvFiles"
+          ]
         },
         {
           "from": "./git.js",
-          "kind": "import"
+          "kind": "import",
+          "imported": [
+            "addWorktree"
+          ]
         },
         {
           "from": "./pm.js",
-          "kind": "import"
+          "kind": "import",
+          "imported": [
+            "detectPM"
+          ]
         },
         {
           "from": "./ui.js",
-          "kind": "import"
+          "kind": "import",
+          "imported": [
+            "ui"
+          ]
+        },
+        {
+          "from": "./utils/security.js",
+          "kind": "import",
+          "imported": [
+            "SecurityValidator",
+            "ErrorUtils"
+          ]
         },
         {
           "from": "./types.js",
-          "kind": "import"
+          "kind": "import",
+          "imported": [
+            "RepoPick",
+            "RepoMounted"
+          ]
         }
       ],
       "dependencies": [
@@ -683,11 +919,138 @@
         "src/git.ts",
         "src/pm.ts",
         "src/types.ts",
-        "src/ui.ts"
+        "src/ui.ts",
+        "src/utils/security.ts"
       ],
-      "functions": [],
+      "functions": [
+        {
+          "name": "createWorkspace",
+          "params": [
+            {
+              "name": "repoPicks",
+              "type": "RepoPick[]"
+            }
+          ],
+          "isAsync": true,
+          "isExported": true,
+          "returnType": "Promise<{\n  wsDir: string;\n  mounted: RepoMounted[];\n}>"
+        },
+        {
+          "name": "createFactpackFiles",
+          "params": [
+            {
+              "name": "repos",
+              "type": "RepoMounted[]"
+            }
+          ],
+          "isAsync": true,
+          "isExported": false,
+          "returnType": "Promise<void>"
+        },
+        {
+          "name": "generateWorkspacePrompt",
+          "params": [
+            {
+              "name": "repos",
+              "type": "RepoMounted[]"
+            }
+          ],
+          "isAsync": false,
+          "isExported": false,
+          "returnType": "string"
+        },
+        {
+          "name": "generateFallbackTemplate",
+          "params": [
+            {
+              "name": "repos",
+              "type": "RepoMounted[]"
+            }
+          ],
+          "isAsync": false,
+          "isExported": false,
+          "returnType": "string"
+        },
+        {
+          "name": "tryClaudeCliGeneration",
+          "params": [
+            {
+              "name": "prompt",
+              "type": "string"
+            },
+            {
+              "name": "wsDir",
+              "type": "string"
+            }
+          ],
+          "isAsync": true,
+          "isExported": false,
+          "returnType": "Promise<boolean>"
+        },
+        {
+          "name": "generateClaudeMd",
+          "params": [
+            {
+              "name": "wsDir",
+              "type": "string"
+            },
+            {
+              "name": "repos",
+              "type": "RepoMounted[]"
+            }
+          ],
+          "isAsync": true,
+          "isExported": true,
+          "returnType": "Promise<void>"
+        }
+      ],
       "classes": [],
       "constants": []
+    },
+    "tests/fixtures/packageJsonFixtures.ts": {
+      "imports": [
+        {
+          "from": "fs",
+          "kind": "import",
+          "imported": [
+            "writeFileSync"
+          ]
+        },
+        {
+          "from": "path",
+          "kind": "import",
+          "imported": [
+            "join"
+          ]
+        }
+      ],
+      "dependencies": [],
+      "functions": [
+        {
+          "name": "createPackageJson",
+          "params": [
+            {
+              "name": "dir",
+              "type": "string"
+            },
+            {
+              "name": "fixture",
+              "type": "keyof typeof packageFixtures"
+            }
+          ],
+          "isAsync": false,
+          "isExported": true,
+          "returnType": "void"
+        }
+      ],
+      "classes": [],
+      "constants": [
+        {
+          "name": "packageFixtures",
+          "initKind": "unknown",
+          "isExported": true
+        }
+      ]
     },
     "tests/fsops.test.ts": {
       "imports": [
@@ -708,16 +1071,17 @@
           "kind": "import"
         },
         {
-          "from": "os",
+          "from": "execa",
           "kind": "import"
         },
         {
-          "from": "execa",
+          "from": "./utils/testDir.js",
           "kind": "import"
         }
       ],
       "dependencies": [
-        "src/fsops.ts"
+        "src/fsops.ts",
+        "tests/utils/testDir.ts"
       ],
       "functions": [],
       "classes": [],
@@ -727,58 +1091,42 @@
       "imports": [
         {
           "from": "vitest",
-          "kind": "import",
-          "imported": [
-            "describe",
-            "test",
-            "expect",
-            "beforeEach",
-            "afterEach"
-          ]
+          "kind": "import"
         },
         {
           "from": "../src/git.js",
-          "kind": "import",
-          "imported": [
-            "currentBranch",
-            "discoverRepos",
-            "addWorktree"
-          ]
+          "kind": "import"
+        },
+        {
+          "from": "../src/utils/security.js",
+          "kind": "import"
         },
         {
           "from": "fs",
-          "kind": "import",
-          "imported": [
-            "mkdtempSync",
-            "rmSync",
-            "writeFileSync",
-            "mkdirSync"
-          ]
+          "kind": "import"
         },
         {
           "from": "path",
-          "kind": "import",
-          "imported": [
-            "join"
-          ]
-        },
-        {
-          "from": "os",
-          "kind": "import",
-          "imported": [
-            "tmpdir"
-          ]
+          "kind": "import"
         },
         {
           "from": "execa",
-          "kind": "import",
-          "imported": [
-            "execa"
-          ]
+          "kind": "import"
+        },
+        {
+          "from": "./utils/testDir.js",
+          "kind": "import"
+        },
+        {
+          "from": "./utils/errorMatchers.js",
+          "kind": "import"
         }
       ],
       "dependencies": [
-        "src/git.ts"
+        "src/git.ts",
+        "src/utils/security.ts",
+        "tests/utils/errorMatchers.ts",
+        "tests/utils/testDir.ts"
       ],
       "functions": [],
       "classes": [],
@@ -813,6 +1161,10 @@
         {
           "from": "fs-extra",
           "kind": "import"
+        },
+        {
+          "from": "./utils/errorMatchers.js",
+          "kind": "import"
         }
       ],
       "dependencies": [
@@ -820,7 +1172,8 @@
         "src/package.ts",
         "src/prompts.ts",
         "src/ui.ts",
-        "src/workspace.ts"
+        "src/workspace.ts",
+        "tests/utils/errorMatchers.ts"
       ],
       "functions": [],
       "classes": [],
@@ -838,10 +1191,6 @@
         },
         {
           "from": "path",
-          "kind": "import"
-        },
-        {
-          "from": "os",
           "kind": "import"
         },
         {
@@ -871,6 +1220,18 @@
         {
           "from": "../src/types.js",
           "kind": "import"
+        },
+        {
+          "from": "./utils/testDir.js",
+          "kind": "import"
+        },
+        {
+          "from": "./fixtures/packageJsonFixtures.js",
+          "kind": "import"
+        },
+        {
+          "from": "./utils/errorMatchers.js",
+          "kind": "import"
         }
       ],
       "dependencies": [
@@ -878,7 +1239,10 @@
         "src/git.ts",
         "src/pm.ts",
         "src/types.ts",
-        "src/workspace.ts"
+        "src/workspace.ts",
+        "tests/fixtures/packageJsonFixtures.ts",
+        "tests/utils/errorMatchers.ts",
+        "tests/utils/testDir.ts"
       ],
       "functions": [],
       "classes": [],
@@ -940,7 +1304,6 @@
           "from": "fs",
           "kind": "import",
           "imported": [
-            "mkdtempSync",
             "writeFileSync",
             "rmSync"
           ]
@@ -953,15 +1316,16 @@
           ]
         },
         {
-          "from": "os",
+          "from": "./utils/testDir.js",
           "kind": "import",
           "imported": [
-            "tmpdir"
+            "createTestDir"
           ]
         }
       ],
       "dependencies": [
-        "src/pm.ts"
+        "src/pm.ts",
+        "tests/utils/testDir.ts"
       ],
       "functions": [],
       "classes": [],
@@ -1004,16 +1368,193 @@
           "from": "../src/ui.js",
           "kind": "import",
           "isNamespace": true
+        },
+        {
+          "from": "./utils/errorMatchers.js",
+          "kind": "import",
+          "imported": [
+            "errorMatchers"
+          ]
         }
       ],
       "dependencies": [
         "src/git.ts",
         "src/prompts.ts",
-        "src/ui.ts"
+        "src/ui.ts",
+        "tests/utils/errorMatchers.ts"
       ],
       "functions": [],
       "classes": [],
       "constants": []
+    },
+    "tests/utils/errorMatchers.ts": {
+      "imports": [
+        {
+          "from": "vitest",
+          "kind": "import",
+          "imported": [
+            "expect"
+          ]
+        }
+      ],
+      "dependencies": [],
+      "functions": [
+        {
+          "name": "expectPromiseRejection",
+          "params": [
+            {
+              "name": "promise",
+              "type": "Promise<T>"
+            },
+            {
+              "name": "matcher",
+              "type": "ReturnType<typeof expect.objectContaining> | typeof expect.any"
+            }
+          ],
+          "isAsync": false,
+          "isExported": true,
+          "returnType": "Promise<void>"
+        }
+      ],
+      "classes": [],
+      "constants": [
+        {
+          "name": "errorMatchers",
+          "initKind": "object",
+          "isExported": true
+        }
+      ]
+    },
+    "tests/utils/index.ts": {
+      "imports": [
+        {
+          "from": "./testDir.js",
+          "kind": "export",
+          "imported": [
+            "createTestDir",
+            "TestDirManager"
+          ]
+        },
+        {
+          "from": "./errorMatchers.js",
+          "kind": "export",
+          "imported": [
+            "errorMatchers",
+            "expectPromiseRejection"
+          ]
+        },
+        {
+          "from": "../fixtures/packageJsonFixtures.js",
+          "kind": "export",
+          "imported": [
+            "packageFixtures",
+            "createPackageJson"
+          ]
+        }
+      ],
+      "dependencies": [
+        "tests/fixtures/packageJsonFixtures.ts",
+        "tests/utils/errorMatchers.ts",
+        "tests/utils/testDir.ts"
+      ],
+      "functions": [],
+      "classes": [],
+      "constants": []
+    },
+    "tests/utils/testDir.ts": {
+      "imports": [
+        {
+          "from": "fs",
+          "kind": "import",
+          "imported": [
+            "mkdtempSync",
+            "rmSync"
+          ]
+        },
+        {
+          "from": "path",
+          "kind": "import",
+          "imported": [
+            "join"
+          ]
+        },
+        {
+          "from": "os",
+          "kind": "import",
+          "imported": [
+            "tmpdir"
+          ]
+        }
+      ],
+      "dependencies": [],
+      "functions": [
+        {
+          "name": "createTestDir",
+          "params": [
+            {
+              "name": "prefix",
+              "type": "string"
+            },
+            {
+              "name": "testName",
+              "type": "string",
+              "optional": true
+            }
+          ],
+          "isAsync": false,
+          "isExported": true,
+          "returnType": "string"
+        }
+      ],
+      "classes": [
+        {
+          "name": "TestDirManager",
+          "isExported": true,
+          "methods": [
+            {
+              "name": "create",
+              "params": [
+                {
+                  "name": "prefix",
+                  "type": "string"
+                },
+                {
+                  "name": "testName",
+                  "type": "string",
+                  "optional": true
+                }
+              ],
+              "isAsync": false,
+              "returnType": "string"
+            },
+            {
+              "name": "cleanup",
+              "params": [],
+              "isAsync": false,
+              "returnType": "void"
+            }
+          ],
+          "properties": [
+            {
+              "name": "cleanupPaths",
+              "type": "string[]",
+              "isPrivate": true
+            }
+          ]
+        }
+      ],
+      "constants": [
+        {
+          "name": "RANDOM_SUFFIX_LENGTH",
+          "initKind": "literal",
+          "isExported": false
+        },
+        {
+          "name": "MAX_SAFE_NAME_LENGTH",
+          "initKind": "literal",
+          "isExported": false
+        }
+      ]
     },
     "vitest.config.ts": {
       "imports": [

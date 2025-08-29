@@ -23,8 +23,18 @@ export class SecurityValidator {
    * Whitelist of safe CLI arguments for Claude CLI
    */
   private static readonly ALLOWED_CLI_FLAGS = [
-    '--model', '--temperature', '--max-tokens', '--format',
-    '--timeout', '--verbose', '--quiet', '--help', '--version'
+    // Core
+    '--print', '-p', '--help', '--version', '--verbose', '--quiet',
+    // Models & limits
+    '--model', '--max-turns', '--timeout',
+    // Output/Input formats
+    '--output-format', '--input-format',
+    // Session control
+    '--continue', '--resume',
+    // Permission/MCP
+    '--permission-mode', '--permission-prompt-tool',
+    // Directories/tools (values validated heuristically)
+    '--add-dir', '--allowedTools', '--disallowedTools'
   ];
 
   /**
@@ -87,17 +97,52 @@ export class SecurityValidator {
       return [];
     }
     
-    return args
-      .split(/\s+/)
-      .filter(arg => {
-        // Allow flags from whitelist
-        if (this.ALLOWED_CLI_FLAGS.some(flag => arg.startsWith(flag))) {
-          return true;
+    const tokens = args.split(/\s+/).filter(Boolean);
+    const result: string[] = [];
+    let expectDirValues = false; // after --add-dir, collect directories until next flag
+    let expectGenericValue = false; // for flags that take a single value
+
+    for (const t of tokens) {
+      const isFlag = t.startsWith('--') || t === '-p';
+      if (isFlag) {
+        // Reset expectations on a new flag
+        expectDirValues = false;
+        expectGenericValue = false;
+        if (this.ALLOWED_CLI_FLAGS.includes(t)) {
+          result.push(t);
+          if (t === '--add-dir') expectDirValues = true;
+          if (t === '--model' || t === '--output-format' || t === '--input-format' || t === '--max-turns' || t === '--permission-mode' || t === '--permission-prompt-tool' || t === '--resume') {
+            expectGenericValue = true;
+          }
         }
-        // Allow simple values (no shell metacharacters)
-        return /^[a-zA-Z0-9._-]+$/.test(arg);
-      })
-      .slice(0, 10); // Limit number of arguments
+        continue;
+      }
+
+      // Value handling
+      const safeValue = /^[a-zA-Z0-9._:@+\/-]+$/.test(t); // allow common path and identifier chars
+      if (!safeValue) continue;
+
+      if (expectDirValues) {
+        // Validate as a path (best-effort)
+        try {
+          result.push(SecurityValidator.validatePath(t));
+        } catch {
+          // skip invalid paths
+        }
+        continue;
+      }
+
+      if (expectGenericValue) {
+        result.push(t);
+        expectGenericValue = false;
+        continue;
+      }
+
+      // If no flag expects this token, still pass safe free values (e.g., non-flag positional settings)
+      result.push(t);
+    }
+
+    return result.slice(0, 20);
   }
 
   /**

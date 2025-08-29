@@ -2,11 +2,13 @@ import { resolve, join } from 'path';
 import fs from 'fs-extra';
 const { readJson, writeFile } = fs;
 import { execa } from 'execa';
+import { spawn } from 'child_process';
 import { ensureWorkspaceSkeleton, primeNodeModules, copyEnvFiles } from './fsops.js';
 import { addWorktree } from './git.js';
 import { detectPM } from './pm.js';
 import { ui } from './ui.js';
 import { SecurityValidator, ErrorUtils } from './utils/security.js';
+import { EnvironmentUtils } from './utils/environment.js';
 import type { RepoPick, RepoMounted } from './types.js';
 
 
@@ -251,7 +253,119 @@ ${repos.map(r => `### ${r.alias}
 }
 
 /**
- * Attempts to generate CLAUDE.md using Claude CLI with optional streaming support.
+ * Configuration options for Claude CLI execution
+ */
+interface ClaudeCliOptions {
+  streaming?: boolean;
+  timeout?: number;
+  args: string[];
+}
+
+/**
+ * Result of Claude CLI execution attempt
+ */
+interface ClaudeCliResult {
+  success: boolean;
+  output?: string;
+  error?: string;
+  method: 'streaming' | 'direct' | 'failed';
+}
+
+/**
+ * Executes Claude CLI with streaming support using secure process piping
+ */
+async function executeClaudeCliWithStreaming(prompt: string, options: ClaudeCliOptions): Promise<ClaudeCliResult> {
+  const baseArgs = ['-p', prompt, '--output-format', 'stream-json', '--verbose', ...options.args];
+  const timeout = options.timeout || 300000;
+
+  // Spawn Claude CLI process
+  const claudeProcess = spawn('claude', baseArgs, {
+    stdio: ['ignore', 'pipe', 'inherit']
+  });
+  
+  // Spawn @agent-io/stream process to consume Claude's output
+  const streamProcess = spawn('npx', ['-y', '@agent-io/stream'], {
+    stdio: [claudeProcess.stdout, 'pipe', 'inherit']
+  });
+  
+  // Set up timeout handling
+  const timeoutHandle = setTimeout(() => {
+    claudeProcess.kill('SIGTERM');
+    streamProcess.kill('SIGTERM');
+  }, timeout);
+  
+  // Collect output from stream process
+  let stdout = '';
+  streamProcess.stdout?.on('data', (chunk: Buffer) => {
+    stdout += chunk.toString();
+  });
+  
+  try {
+    // Wait for both processes to complete
+    await Promise.all([
+      new Promise<void>((resolve, reject) => {
+        claudeProcess.on('close', (code: number | null) => {
+          if (code === 0) resolve();
+          else reject(new Error(`Claude CLI exited with code ${code}`));
+        });
+        claudeProcess.on('error', reject);
+      }),
+      new Promise<void>((resolve, reject) => {
+        streamProcess.on('close', (code: number | null) => {
+          clearTimeout(timeoutHandle);
+          if (code === 0) resolve();
+          else reject(new Error(`Stream process exited with code ${code}`));
+        });
+        streamProcess.on('error', reject);
+      })
+    ]);
+
+    return {
+      success: true,
+      output: stdout,
+      method: 'streaming'
+    };
+    
+  } catch (error) {
+    clearTimeout(timeoutHandle);
+    return {
+      success: false,
+      error: ErrorUtils.extractErrorMessage(error),
+      method: 'failed'
+    };
+  }
+}
+
+/**
+ * Executes Claude CLI directly without streaming
+ */
+async function executeClaudeCliDirect(prompt: string, options: ClaudeCliOptions): Promise<ClaudeCliResult> {
+  const args = ['-p', prompt, ...options.args];
+  const timeout = options.timeout || 300000;
+
+  try {
+    const { stdout } = await execa('claude', args, {
+      timeout,
+      shell: false
+    });
+
+    return {
+      success: true,
+      output: stdout,
+      method: 'direct'
+    };
+    
+  } catch (error) {
+    return {
+      success: false,
+      error: ErrorUtils.extractErrorMessage(error),
+      method: 'failed'
+    };
+  }
+}
+
+/**
+ * Attempts to generate CLAUDE.md using Claude CLI with fallback strategy.
  * 
  * @param prompt - The prompt to send to Claude CLI
  * @param wsDir - Workspace directory to save the output
@@ -259,8 +373,8 @@ ${repos.map(r => `### ${r.alias}
  */
 async function tryClaudeCliGeneration(prompt: string, wsDir: string): Promise<boolean> {
   // Skip Claude CLI entirely in test environment to avoid timeouts and complexity
-  if (process.env.VITEST || process.env.NODE_ENV === 'test') {
-    ui.info('Test environment detected; skipping Claude CLI generation');
+  if (EnvironmentUtils.isTestEnvironment()) {
+    ui.info(`Test environment detected (${EnvironmentUtils.getEnvironmentDescription()}); skipping Claude CLI generation`);
     return false;
   }
 
@@ -269,50 +383,78 @@ async function tryClaudeCliGeneration(prompt: string, wsDir: string): Promise<bo
   // Sanitize and validate CLAUDE_CLI_ARGS to prevent injection
   const sanitizedArgs = SecurityValidator.sanitizeCliArgs(process.env.CLAUDE_CLI_ARGS);
   
-  // Build base Claude CLI args
-  const baseArgs = ['-p', prompt, '--output-format', 'stream-json', '--verbose', ...sanitizedArgs];
+  const options: ClaudeCliOptions = {
+    streaming: true,
+    timeout: timeoutMs,
+    args: sanitizedArgs
+  };
+
+  // First attempt: Streaming
+  ui.info('Running Claude CLI with streaming support...');
+  const streamingResult = await executeClaudeCliWithStreaming(prompt, options);
   
-  try {
-    // First attempt: Use proper streaming with @agent-io/stream
-    const command = `claude ${baseArgs.map(arg => arg.includes(' ') ? `"${arg}"` : arg).join(' ')} | npx -y @agent-io/stream`;
-    ui.info(`Running: ${command}`);
-    
-    const { stdout } = await execa('sh', ['-c', command], {
-      timeout: timeoutMs,
-      stdio: ['ignore', 'pipe', 'inherit']
-    });
-    
-    await writeFile(join(wsDir, 'CLAUDE.md'), stdout);
+  if (streamingResult.success && streamingResult.output) {
+    await writeFile(join(wsDir, 'CLAUDE.md'), streamingResult.output);
     ui.success('✓ CLAUDE.md generated successfully via Claude CLI with streaming');
     return true;
-    
-  } catch (error) {
-    const message = ErrorUtils.extractErrorMessage(error).toLowerCase();
-    
-    if (message.includes('timed out')) {
-      ui.warning('Claude CLI timed out; using fallback template');
-      return false;
-    }
-    
-    ui.warning(`Streaming failed: ${SecurityValidator.sanitizeErrorMessage(error)}`);
-    
-    // Fallback: Try without streaming
-    try {
-      const fallbackArgs = ['-p', prompt, ...sanitizedArgs];
-      const { stdout } = await execa('claude', fallbackArgs, {
-        timeout: timeoutMs,
-        shell: false
-      });
-      
-      await writeFile(join(wsDir, 'CLAUDE.md'), stdout);
-      ui.success('✓ CLAUDE.md generated successfully via Claude CLI (non-streaming)');
-      return true;
-      
-    } catch (fallbackError) {
-      ui.warning(`Claude CLI failed: ${SecurityValidator.sanitizeErrorMessage(fallbackError)}`);
-      return false;
-    }
   }
+
+  // Handle streaming-specific failures with actionable guidance
+  const errorMessage = streamingResult.error?.toLowerCase() || '';
+  
+  if (errorMessage.includes('timed out')) {
+    const timeoutMinutes = Math.floor(timeoutMs / 60000);
+    ui.warning(`Claude CLI timed out after ${timeoutMinutes} minutes. Consider increasing CCWS_CLAUDE_TIMEOUT_MS or check your network connection. Using fallback template.`);
+    return false;
+  }
+
+  if (errorMessage.includes('command not found') || errorMessage.includes('not found')) {
+    ui.warning('Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-cli');
+    ui.info('Alternatively, set Claude CLI in PATH or use fallback template generation.');
+  } else if (errorMessage.includes('permission denied') || errorMessage.includes('eacces')) {
+    ui.warning('Permission denied accessing Claude CLI. Check file permissions or run with appropriate privileges.');
+  } else if (errorMessage.includes('network') || errorMessage.includes('connect')) {
+    ui.warning('Network error with Claude CLI. Check your internet connection and try again.');
+  } else {
+    ui.warning(`Streaming failed: ${SecurityValidator.sanitizeErrorMessage(streamingResult.error || 'Unknown error')}`);
+  }
+
+  // Fallback: Direct execution without streaming
+  ui.info('Attempting direct Claude CLI execution without streaming...');
+  options.streaming = false;
+  const directResult = await executeClaudeCliDirect(prompt, options);
+  
+  if (directResult.success && directResult.output) {
+    await writeFile(join(wsDir, 'CLAUDE.md'), directResult.output);
+    ui.success('✓ CLAUDE.md generated successfully via Claude CLI (non-streaming)');
+    return true;
+  }
+
+  // Both methods failed - provide comprehensive troubleshooting guidance
+  const fallbackError = directResult.error?.toLowerCase() || '';
+  
+  if (fallbackError.includes('command not found') || fallbackError.includes('not found')) {
+    ui.error('❌ Claude CLI not found on system');
+    ui.info('💡 Install Claude CLI: npm install -g @anthropic-ai/claude-cli');
+    ui.info('💡 Or add Claude CLI to your PATH environment variable');
+  } else if (fallbackError.includes('authentication') || fallbackError.includes('unauthorized') || fallbackError.includes('api key')) {
+    ui.error('❌ Claude CLI authentication failed');
+    ui.info('💡 Configure authentication: claude auth login');
+    ui.info('💡 Or set ANTHROPIC_API_KEY environment variable');
+  } else if (fallbackError.includes('network') || fallbackError.includes('connect') || fallbackError.includes('timeout')) {
+    ui.error('❌ Network connectivity issues');
+    ui.info('💡 Check your internet connection');
+    ui.info('💡 Try again later or increase timeout with CCWS_CLAUDE_TIMEOUT_MS');
+  } else if (fallbackError.includes('rate limit') || fallbackError.includes('quota')) {
+    ui.error('❌ API rate limit or quota exceeded');
+    ui.info('💡 Wait a few minutes and try again');
+    ui.info('💡 Check your Claude CLI usage limits');
+  } else {
+    ui.warning(`Claude CLI failed completely: ${SecurityValidator.sanitizeErrorMessage(directResult.error || 'Unknown error')}`);
+    ui.info('💡 Using fallback template generation instead');
+  }
+  
+  return false;
 }
 
 /**

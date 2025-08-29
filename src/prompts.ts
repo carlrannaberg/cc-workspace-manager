@@ -1,6 +1,6 @@
 import { input, checkbox, confirm } from '@inquirer/prompts';
 import { basename } from 'path';
-import { discoverRepos, currentBranch } from './git.js';
+import { discoverRepos, currentBranch, isBranchCheckedOut } from './git.js';
 import type { RepoPick } from './types.js';
 import { ui } from './ui.js';
 import { ErrorUtils, SecurityValidator } from './utils/security.js';
@@ -132,7 +132,7 @@ export async function getUserSelections(): Promise<RepoPick[]> {
       
       // Get alias
       const alias = await input({
-        message: `Alias for ${repoName}:`,
+        message: `Alias for ${repoName} (used for script names and folder):`,
         default: repoName,
         validate: (input: string) => {
           const trimmed = input.trim();
@@ -151,8 +151,8 @@ export async function getUserSelections(): Promise<RepoPick[]> {
       
       // Get current branch as default
       const defaultBranch = await currentBranch(repo);
-      const branch = await input({
-        message: `Branch for ${alias}:`,
+      let branch = await input({
+        message: `Branch for ${alias} (existing or new; new branches will be created from the repo's base):`,
         default: defaultBranch,
         validate: (input: string) => {
           if (!input.trim()) {
@@ -166,6 +166,39 @@ export async function getUserSelections(): Promise<RepoPick[]> {
           }
         }
       });
+
+      // Early detect: if branch is already checked out in a worktree, offer to create a derived branch
+      try {
+        const inUse = await isBranchCheckedOut(repo, branch.trim());
+        if (inUse) {
+          const suffix = Math.random().toString(36).slice(2, 6);
+          const suggested = `${branch.trim()}-ccws-${suffix}`;
+          const accept = await confirm({
+            message: `Branch '${branch.trim()}' is already checked out in another worktree. Create a new branch '${suggested}' from the base instead?`,
+            default: true
+          });
+          if (accept) {
+            branch = suggested;
+          } else {
+            // Prompt once more for an alternative branch name
+            branch = await input({
+              message: `Choose a different branch for ${alias}:`,
+              default: `${branch.trim()}-ccws-${suffix}`,
+              validate: (input: string) => {
+                if (!input.trim()) return 'Branch cannot be empty';
+                try {
+                  SecurityValidator.validateBranchName(input.trim());
+                  return true;
+                } catch (error) {
+                  return ErrorUtils.extractErrorMessage(error);
+                }
+              }
+            });
+          }
+        }
+      } catch {
+        // Non-fatal; proceed and let git addWorktree handle errors if any
+      }
       
       repoPicks.push({ 
         alias: alias.trim(), 

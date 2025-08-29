@@ -193,11 +193,75 @@ export async function addWorktree(
   }
   
   // Create worktree
-  await execa('git', [
-    '-C', sanitizedBaseRepo, 
-    'worktree', 'add', 
-    sanitizedWorktreeDir, sanitizedBranch
-  ], {
-    shell: false // Explicitly disable shell interpretation
-  });
+  try {
+    await execa('git', [
+      '-C', sanitizedBaseRepo, 
+      'worktree', 'add', 
+      sanitizedWorktreeDir, sanitizedBranch
+    ], {
+      shell: false // Explicitly disable shell interpretation
+    });
+    return;
+  } catch (error) {
+    const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    // If the reference doesn't exist, offer a sensible fallback: create a new branch from base
+    if (msg.includes('invalid reference') || msg.includes('unknown revision') || msg.includes('not a valid object name')) {
+      // Determine a reasonable base ref: origin/HEAD if present, else current HEAD
+      let baseRef = 'HEAD';
+      try {
+        const { stdout } = await execa('git', [
+          '-C', sanitizedBaseRepo,
+          'rev-parse', '--abbrev-ref', 'origin/HEAD'
+        ], { shell: false });
+        // stdout like: origin/main
+        if (stdout && stdout.trim()) baseRef = stdout.trim();
+      } catch {
+        // fallback to HEAD
+      }
+      ui.info(`Branch '${sanitizedBranch}' not found; creating from ${baseRef}...`);
+      await execa('git', [
+        '-C', sanitizedBaseRepo,
+        'worktree', 'add',
+        '-b', sanitizedBranch,
+        sanitizedWorktreeDir,
+        baseRef
+      ], { shell: false });
+      return;
+    }
+    // If branch is already checked out in another worktree, surface a clearer message
+    if (msg.includes('already checked out')) {
+      throw new Error(`Branch '${sanitizedBranch}' is already checked out in another worktree. Choose a different branch.`);
+    }
+    // Re-throw original error otherwise
+    throw error;
+  }
+}
+
+/**
+ * Checks whether a branch is currently checked out in any worktree of the repo.
+ */
+export async function isBranchCheckedOut(repoPath: string, branch: string): Promise<boolean> {
+  try {
+    const sanitizedRepo = SecurityValidator.validatePath(repoPath);
+    const targetRef = `refs/heads/${branch.trim()}`;
+    const { stdout } = await execa('git', ['-C', sanitizedRepo, 'worktree', 'list', '--porcelain'], { shell: false });
+    const lines = stdout.split('\n');
+    for (const line of lines) {
+      // Lines look like: "branch refs/heads/main"
+      const m = line.match(/^branch\s+(\S+)/);
+      if (m && m[1] === targetRef) {
+        return true;
+      }
+    }
+    // Also check the main working tree branch (sometimes not listed with porcelain in older git)
+    try {
+      const { stdout: cur } = await execa('git', ['-C', sanitizedRepo, 'rev-parse', '--abbrev-ref', 'HEAD'], { shell: false });
+      if (cur.trim() === branch.trim()) return true;
+    } catch {
+      // ignore
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
