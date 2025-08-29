@@ -307,7 +307,7 @@ async function tryClaudeCliGeneration(prompt: string, wsDir: string): Promise<bo
     } catch (error) {
       // Fallback: pipe directly to stdout
       child.stdout?.pipe(process.stdout);
-      ui.info(`Using direct output streaming (fallback mode): ${error instanceof Error ? error.message : 'Stream module unavailable'}`);
+      ui.info(`Using direct output streaming (fallback mode): ${ErrorUtils.extractErrorMessage(error)}`);
     }
     
     // Send prompt to Claude CLI

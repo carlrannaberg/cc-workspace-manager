@@ -174,7 +174,7 @@ async function main() {
         await fs.rm(wsDir, { recursive: true, force: true });
         ui.info(`Cleaned up workspace: ${wsDir}`);
       } catch (cleanupError) {
-        ui.warning(`Failed to cleanup workspace: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+        ui.warning(`Failed to cleanup workspace: ${ErrorUtils.extractErrorMessage(cleanupError)}`);
       }
     } else if (workspaceCreated && wsDir && mounted.length > 0) {
       ui.info(`Partial workspace preserved at: ${wsDir} (${mounted.length} repo(s) mounted)`);

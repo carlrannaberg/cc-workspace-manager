@@ -66,7 +66,7 @@ export class UserCancelledError extends Error {
  *   if (error instanceof UserCancelledError) {
  *     console.log('User cancelled the operation');
  *   } else {
- *     console.error('Selection failed:', error.message);
+ *     console.error('Selection failed:', ErrorUtils.extractErrorMessage(error));
  *   }
  * }
  * ```
