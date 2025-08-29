@@ -3,6 +3,7 @@ import { getUserSelections, handlePromptError } from './prompts.js';
 import { createWorkspace, generateClaudeMd } from './workspace.js';
 import { generateRootPackageJson } from './package.js';
 import { ui } from './ui.js';
+import { ErrorUtils } from './utils/security.js';
 import fs from 'fs-extra';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -133,14 +134,14 @@ async function main() {
             await generateRootPackageJson(wsDir, mounted);
         }
         catch (error) {
-            ui.warning(`Failed to generate package.json: ${error instanceof Error ? error.message : String(error)}`);
+            ui.warning(`Failed to generate package.json: ${ErrorUtils.extractErrorMessage(error)}`);
             ui.info('You can manually create package.json later if needed');
         }
         try {
             await generateClaudeMd(wsDir, mounted);
         }
         catch (error) {
-            ui.warning(`Failed to generate CLAUDE.md: ${error instanceof Error ? error.message : String(error)}`);
+            ui.warning(`Failed to generate CLAUDE.md: ${ErrorUtils.extractErrorMessage(error)}`);
             ui.info('You can manually create CLAUDE.md later if needed');
         }
         // Phase 4: Show success and next steps
@@ -155,7 +156,7 @@ async function main() {
                 ui.info(`Cleaned up workspace: ${wsDir}`);
             }
             catch (cleanupError) {
-                ui.warning(`Failed to cleanup workspace: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+                ui.warning(`Failed to cleanup workspace: ${ErrorUtils.extractErrorMessage(cleanupError)}`);
             }
         }
         else if (workspaceCreated && wsDir && mounted.length > 0) {

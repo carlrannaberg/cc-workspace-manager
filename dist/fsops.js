@@ -1,20 +1,24 @@
 import { execa } from 'execa';
 import { existsSync, statSync } from 'fs';
-import { join, basename, resolve } from 'path';
+import { join, basename } from 'path';
 import fs from 'fs-extra';
 import { readdir } from 'fs/promises';
 import { ui } from './ui.js';
+import { SecurityValidator, ErrorUtils } from './utils/security.js';
 export async function ensureWorkspaceSkeleton(wsDir) {
     await fs.ensureDir(join(wsDir, 'repos'));
     await fs.writeFile(join(wsDir, '.gitignore'), 'repos/\nnode_modules/\n.env*\n');
 }
 export async function primeNodeModules(src, dst) {
-    // Validate paths to prevent injection
-    const sanitizedSrc = resolve(src);
-    const sanitizedDst = resolve(dst);
-    // Security checks
-    if (sanitizedSrc.includes('..') || sanitizedDst.includes('..') || src.includes('..') || dst.includes('..')) {
-        return { method: 'skipped', error: 'Path traversal detected' };
+    // Validate paths to prevent injection using centralized security utility
+    let sanitizedSrc;
+    let sanitizedDst;
+    try {
+        sanitizedSrc = SecurityValidator.validatePath(src);
+        sanitizedDst = SecurityValidator.validatePath(dst);
+    }
+    catch (error) {
+        return { method: 'skipped', error: SecurityValidator.sanitizeErrorMessage(error) };
     }
     const srcPath = join(sanitizedSrc, 'node_modules');
     const dstPath = join(sanitizedDst, 'node_modules');
@@ -30,7 +34,7 @@ export async function primeNodeModules(src, dst) {
         return { method: 'hardlink' };
     }
     catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = ErrorUtils.extractErrorMessage(error);
         // Check for specific hardlink failures and provide helpful context
         if (errorMsg.includes('Operation not permitted') || errorMsg.includes('cross-device')) {
             ui.warning(`Hardlink failed (cross-filesystem detected), falling back to rsync...`);
@@ -55,7 +59,7 @@ export async function primeNodeModules(src, dst) {
         return { method: 'rsync' };
     }
     catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = ErrorUtils.extractErrorMessage(error);
         ui.error(`Failed to prime node_modules for ${basename(dst)}: ${errorMsg}`);
         ui.info('You may need to run "npm install" manually in this repository');
         return { method: 'skipped', error: errorMsg };
@@ -63,19 +67,15 @@ export async function primeNodeModules(src, dst) {
 }
 export async function copyEnvFiles(src, dst) {
     try {
-        // Validate and resolve paths
-        const srcPath = resolve(src);
-        const dstPath = resolve(dst);
+        // Validate paths using centralized security utility
+        const srcPath = SecurityValidator.validatePath(src);
+        const dstPath = SecurityValidator.validatePath(dst);
         // Security validations
         if (!existsSync(srcPath) || !statSync(srcPath).isDirectory()) {
             throw new Error('Invalid source directory');
         }
         if (!existsSync(dstPath) || !statSync(dstPath).isDirectory()) {
             throw new Error('Invalid destination directory');
-        }
-        // Prevent path traversal
-        if (srcPath.includes('..') || dstPath.includes('..') || src.includes('..') || dst.includes('..')) {
-            throw new Error('Path traversal detected');
         }
         // Use fs.readdir instead of shell command for safety
         const files = await readdir(srcPath);
@@ -93,15 +93,13 @@ export async function copyEnvFiles(src, dst) {
                 }
             }
             catch (fileError) {
-                ui.warning(`Failed to copy ${file}: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+                ui.warning(`Failed to copy ${file}: ${ErrorUtils.extractErrorMessage(fileError)}`);
             }
         }));
     }
     catch (error) {
-        // Sanitize error messages to avoid exposing paths
-        const safeError = error instanceof Error
-            ? error.message.replace(/\/.*?\//g, '/***/')
-            : 'Unknown error';
+        // Sanitize error messages using centralized security utility
+        const safeError = SecurityValidator.sanitizeErrorMessage(error);
         ui.warning(`Failed to copy env files: ${safeError}`);
     }
 }

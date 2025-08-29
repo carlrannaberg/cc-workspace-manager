@@ -2,6 +2,7 @@ import { input, checkbox, confirm } from '@inquirer/prompts';
 import { basename } from 'path';
 import { discoverRepos, currentBranch } from './git.js';
 import { ui } from './ui.js';
+import { ErrorUtils, SecurityValidator } from './utils/security.js';
 /**
  * Custom error class for user-initiated cancellation events.
  *
@@ -62,7 +63,7 @@ export class UserCancelledError extends Error {
  *   if (error instanceof UserCancelledError) {
  *     console.log('User cancelled the operation');
  *   } else {
- *     console.error('Selection failed:', error.message);
+ *     console.error('Selection failed:', ErrorUtils.extractErrorMessage(error));
  *   }
  * }
  * ```
@@ -142,7 +143,13 @@ export async function getUserSelections() {
                     if (!input.trim()) {
                         return 'Branch cannot be empty';
                     }
-                    return true;
+                    try {
+                        SecurityValidator.validateBranchName(input.trim());
+                        return true;
+                    }
+                    catch (error) {
+                        return ErrorUtils.extractErrorMessage(error);
+                    }
                 }
             });
             repoPicks.push({
@@ -210,7 +217,7 @@ export function handlePromptError(error) {
         ui.userCancelled();
         process.exit(0);
     }
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = ErrorUtils.extractErrorMessage(error);
     if (errorMessage.includes('No git repositories found')) {
         ui.error('❌ Setup failed: No repositories to configure');
         ui.warning('💡 Try running from a directory that contains git repositories');
