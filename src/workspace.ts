@@ -1,6 +1,8 @@
 import { resolve, join } from 'path';
 import fs from 'fs-extra';
 const { readJson, writeFile } = fs;
+import { readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { execa } from 'execa';
 import { spawn } from 'child_process';
 import { ensureWorkspaceSkeleton, primeNodeModules, copyEnvFiles } from './fsops.js';
@@ -201,23 +203,128 @@ async function createFactpackFiles(repos: RepoMounted[]): Promise<void> {
 }
 
 /**
+ * Package.json structure for repository information
+ */
+interface PackageJsonInfo {
+  name?: string;
+  description?: string;
+  version?: string;
+  scripts?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+/**
+ * Repository content structure for prompt generation
+ */
+interface RepoContent {
+  alias: string;
+  claudeMd?: string;
+  packageJson?: PackageJsonInfo;
+  readme?: string;
+}
+
+/**
+ * Reads repository documentation content for prompt generation.
+ * 
+ * @param repo - Repository configuration
+ * @returns Content object with available documentation
+ */
+async function getRepoContent(repo: RepoMounted): Promise<RepoContent> {
+  const result: RepoContent = { alias: repo.alias };
+
+  try {
+    // First try to read CLAUDE.md
+    const claudeMdPath = join(repo.worktreePath, 'CLAUDE.md');
+    if (existsSync(claudeMdPath)) {
+      result.claudeMd = await readFile(claudeMdPath, 'utf-8');
+    } else {
+      // Fallback: read package.json and README.md
+      const packageJsonPath = join(repo.worktreePath, 'package.json');
+      if (existsSync(packageJsonPath)) {
+        result.packageJson = await readJson(packageJsonPath);
+      }
+
+      // Try common README variations
+      const readmeVariants = ['README.md', 'readme.md', 'Readme.md', 'README.txt'];
+      for (const variant of readmeVariants) {
+        const readmePath = join(repo.worktreePath, variant);
+        if (existsSync(readmePath)) {
+          result.readme = await readFile(readmePath, 'utf-8');
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    ui.warning(`Failed to read content for ${repo.alias}: ${ErrorUtils.extractErrorMessage(error)}`);
+  }
+
+  return result;
+}
+
+/**
  * Generates the prompt text for Claude CLI workspace documentation.
  * 
  * @param repos - Array of mounted repository configurations
  * @returns Formatted prompt string for Claude CLI
  */
-function generateWorkspacePrompt(repos: RepoMounted[]): string {
-  return `Generate a CLAUDE.md workspace guide.
+async function generateWorkspacePrompt(repos: RepoMounted[]): Promise<string> {
+  // Gather content from all repositories
+  const repoContents = await Promise.all(repos.map(getRepoContent));
   
-Repos:
-${repos.map(r => `- ${r.alias}: ${r.branch}`).join('\n')}
+  let prompt = `Create a consolidated CLAUDE.md workspace guide by combining the information below.
 
-Include:
-- Available commands (npm run <alias>:*)
-- How to start dev mode
-- Repo responsibilities
-  
-Keep it under 100 lines.`;
+WORKSPACE OVERVIEW:
+This workspace contains ${repos.length} repository(ies) with the following structure:
+${repos.map(r => `- ${r.alias}: ${r.branch} (${r.packageManager})`).join('\n')}
+
+REPOSITORY DETAILS:
+
+`;
+
+  // Add content for each repository
+  for (const content of repoContents) {
+    prompt += `## ${content.alias.toUpperCase()}\n\n`;
+    
+    if (content.claudeMd) {
+      // Use existing CLAUDE.md content
+      prompt += `### Existing Documentation:\n\`\`\`markdown\n${content.claudeMd}\n\`\`\`\n\n`;
+    } else {
+      // Use package.json and README as fallback
+      if (content.packageJson) {
+        prompt += `### Package Info:\n`;
+        prompt += `- Name: ${content.packageJson.name}\n`;
+        prompt += `- Description: ${content.packageJson.description || 'No description'}\n`;
+        prompt += `- Version: ${content.packageJson.version}\n`;
+        
+        if (content.packageJson.scripts) {
+          prompt += `- Scripts: ${Object.keys(content.packageJson.scripts).join(', ')}\n`;
+        }
+        prompt += `\n`;
+      }
+      
+      if (content.readme) {
+        // Truncate README to first 500 characters to keep prompt manageable
+        const truncatedReadme = content.readme.length > 500 
+          ? content.readme.substring(0, 500) + '...' 
+          : content.readme;
+        prompt += `### README Content:\n\`\`\`markdown\n${truncatedReadme}\n\`\`\`\n\n`;
+      }
+    }
+  }
+
+  prompt += `
+CONSOLIDATION REQUIREMENTS:
+- Create a single workspace CLAUDE.md that consolidates all repository information
+- Include available npm commands for each repo (npm run <alias>:*)
+- Explain how to start development mode for the entire workspace
+- Describe each repository's purpose and responsibilities
+- Keep the output under 100 lines
+- Use clear, concise language
+- Format as proper Markdown
+
+Generate the consolidated CLAUDE.md content now:`;
+
+  return prompt;
 }
 
 /**
@@ -508,7 +615,7 @@ export async function generateClaudeMd(
   await createFactpackFiles(repos);
 
   // Step 2: Generate the prompt for Claude CLI
-  const prompt = generateWorkspacePrompt(repos);
+  const prompt = await generateWorkspacePrompt(repos);
 
   // Step 3: Attempt to generate using Claude CLI
   ui.info('Generating CLAUDE.md via Claude CLI (streaming)...');
