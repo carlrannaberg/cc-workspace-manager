@@ -226,6 +226,11 @@ interface RepoContent {
 /**
  * Reads repository documentation content for prompt generation.
  * 
+ * Priority order:
+ * 1. CLAUDE.md - Primary AI guidance file
+ * 2. AGENTS.md - Alternative AI guidance file  
+ * 3. package.json + README.md - Fallback project information
+ * 
  * @param repo - Repository configuration
  * @returns Content object with available documentation
  */
@@ -238,19 +243,25 @@ async function getRepoContent(repo: RepoMounted): Promise<RepoContent> {
     if (existsSync(claudeMdPath)) {
       result.claudeMd = await readFile(claudeMdPath, 'utf-8');
     } else {
-      // Fallback: read package.json and README.md
-      const packageJsonPath = join(repo.worktreePath, 'package.json');
-      if (existsSync(packageJsonPath)) {
-        result.packageJson = await readJson(packageJsonPath);
-      }
+      // Second try: check for AGENTS.md
+      const agentsMdPath = join(repo.worktreePath, 'AGENTS.md');
+      if (existsSync(agentsMdPath)) {
+        result.claudeMd = await readFile(agentsMdPath, 'utf-8');
+      } else {
+        // Fallback: read package.json and README.md
+        const packageJsonPath = join(repo.worktreePath, 'package.json');
+        if (existsSync(packageJsonPath)) {
+          result.packageJson = await readJson(packageJsonPath);
+        }
 
-      // Try common README variations
-      const readmeVariants = ['README.md', 'readme.md', 'Readme.md', 'README.txt'];
-      for (const variant of readmeVariants) {
-        const readmePath = join(repo.worktreePath, variant);
-        if (existsSync(readmePath)) {
-          result.readme = await readFile(readmePath, 'utf-8');
-          break;
+        // Try common README variations
+        const readmeVariants = ['README.md', 'readme.md', 'Readme.md', 'README.txt'];
+        for (const variant of readmeVariants) {
+          const readmePath = join(repo.worktreePath, variant);
+          if (existsSync(readmePath)) {
+            result.readme = await readFile(readmePath, 'utf-8');
+            break;
+          }
         }
       }
     }
@@ -286,8 +297,8 @@ REPOSITORY DETAILS:
     prompt += `## ${content.alias.toUpperCase()}\n\n`;
     
     if (content.claudeMd) {
-      // Use existing CLAUDE.md content
-      prompt += `### Existing Documentation:\n\`\`\`markdown\n${content.claudeMd}\n\`\`\`\n\n`;
+      // Use existing AI guidance documentation (CLAUDE.md or AGENTS.md)
+      prompt += `### Existing AI Guidance:\n\`\`\`markdown\n${content.claudeMd}\n\`\`\`\n\n`;
     } else {
       // Use package.json and README as fallback
       if (content.packageJson) {
