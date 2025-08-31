@@ -263,7 +263,7 @@ REPOSITORY DETAILS:
     }
     prompt += `
 CONSOLIDATION REQUIREMENTS:
-- Create a single workspace CLAUDE.md that consolidates all repository information
+- Write a single workspace CLAUDE.md file that consolidates all repository information
 - Include available npm commands for each repo (npm run <alias>:*)
 - Explain how to start development mode for the entire workspace
 - Describe each repository's purpose and responsibilities
@@ -271,7 +271,13 @@ CONSOLIDATION REQUIREMENTS:
 - Use clear, concise language
 - Format as proper Markdown
 
-Generate the consolidated CLAUDE.md content now:`;
+IMPORTANT INSTRUCTIONS:
+- Use Write tool to create CLAUDE.md in the current directory
+- Do NOT read any files from the workspace - use only the information provided above
+- Do NOT analyze the codebase - consolidate the provided repository content only
+- Write the file content directly based on the repository information given
+
+Write the CLAUDE.md file now:`;
     return prompt;
 }
 /**
@@ -309,16 +315,35 @@ ${repos.map(r => `### ${r.alias}
  * Executes Claude CLI with streaming support using secure process piping
  */
 async function executeClaudeCliWithStreaming(prompt, options) {
-    const baseArgs = ['-p', prompt, '--output-format', 'stream-json', '--verbose', ...options.args];
+    const baseArgs = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'Write,Edit', ...options.args];
     const timeout = options.timeout || 300000;
-    // Spawn Claude CLI process
-    const claudeProcess = spawn('claude', baseArgs, {
-        stdio: ['ignore', 'pipe', 'inherit']
-    });
-    // Spawn @agent-io/stream process to consume Claude's output
-    const streamProcess = spawn('npx', ['-y', '@agent-io/stream'], {
-        stdio: [claudeProcess.stdout, 'pipe', 'inherit']
-    });
+    let claudeProcess;
+    let streamProcess;
+    try {
+        /**
+         * Note: We use spawn() here instead of execa() because we need
+         * direct stream piping between processes (claude -> @agent-io/stream).
+         * The spawn API allows us to pipe stdout from one process directly
+         * to stdin of another, which is essential for streaming JSON output
+         * through the formatter. execa() is used elsewhere in the codebase
+         * for simpler command execution where we just need the final output.
+         */
+        // Spawn Claude CLI process
+        claudeProcess = spawn('claude', baseArgs, {
+            stdio: ['ignore', 'pipe', 'inherit']
+        });
+        // Spawn @agent-io/stream process to consume Claude's output
+        streamProcess = spawn('npx', ['-y', '@agent-io/stream'], {
+            stdio: [claudeProcess.stdout, 'pipe', 'inherit']
+        });
+    }
+    catch (error) {
+        return {
+            success: false,
+            error: ErrorUtils.extractErrorMessage(error),
+            method: 'failed'
+        };
+    }
     // Set up timeout handling
     const timeoutHandle = setTimeout(() => {
         claudeProcess.kill('SIGTERM');
@@ -370,8 +395,8 @@ async function executeClaudeCliWithStreaming(prompt, options) {
 /**
  * Executes Claude CLI directly without streaming
  */
-async function executeClaudeCliDirect(prompt, options) {
-    const args = ['-p', prompt, ...options.args];
+export async function executeClaudeCliDirect(prompt, options) {
+    const args = ['-p', prompt, '--allowedTools', 'Write,Edit', ...options.args];
     const timeout = options.timeout || 300000;
     try {
         const { stdout } = await execa('claude', args, {
@@ -400,8 +425,8 @@ async function executeClaudeCliDirect(prompt, options) {
  * @returns Promise that resolves to true if successful, false if failed
  */
 async function tryClaudeCliGeneration(prompt, wsDir) {
-    // Skip Claude CLI entirely in test environment to avoid timeouts and complexity
-    if (EnvironmentUtils.isTestEnvironment()) {
+    // Skip Claude CLI in test environment unless explicitly enabled
+    if (EnvironmentUtils.isTestEnvironment() && process.env.CCWS_E2E_CLAUDE !== '1') {
         ui.info(`Test environment detected (${EnvironmentUtils.getEnvironmentDescription()}); skipping Claude CLI generation`);
         return false;
     }

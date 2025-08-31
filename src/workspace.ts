@@ -4,7 +4,7 @@ const { readJson, writeFile } = fs;
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { execa } from 'execa';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { ensureWorkspaceSkeleton, primeNodeModules, copyEnvFiles } from './fsops.js';
 import { addWorktree } from './git.js';
 import { detectPM } from './pm.js';
@@ -325,7 +325,7 @@ REPOSITORY DETAILS:
 
   prompt += `
 CONSOLIDATION REQUIREMENTS:
-- Create a single workspace CLAUDE.md that consolidates all repository information
+- Write a single workspace CLAUDE.md file that consolidates all repository information
 - Include available npm commands for each repo (npm run <alias>:*)
 - Explain how to start development mode for the entire workspace
 - Describe each repository's purpose and responsibilities
@@ -333,7 +333,13 @@ CONSOLIDATION REQUIREMENTS:
 - Use clear, concise language
 - Format as proper Markdown
 
-Generate the consolidated CLAUDE.md content now:`;
+IMPORTANT INSTRUCTIONS:
+- Use Write tool to create CLAUDE.md in the current directory
+- Do NOT read any files from the workspace - use only the information provided above
+- Do NOT analyze the codebase - consolidate the provided repository content only
+- Write the file content directly based on the repository information given
+
+Write the CLAUDE.md file now:`;
 
   return prompt;
 }
@@ -373,7 +379,7 @@ ${repos.map(r => `### ${r.alias}
 /**
  * Configuration options for Claude CLI execution
  */
-interface ClaudeCliOptions {
+export interface ClaudeCliOptions {
   streaming?: boolean;
   timeout?: number;
   args: string[];
@@ -382,7 +388,7 @@ interface ClaudeCliOptions {
 /**
  * Result of Claude CLI execution attempt
  */
-interface ClaudeCliResult {
+export interface ClaudeCliResult {
   success: boolean;
   output?: string;
   error?: string;
@@ -393,18 +399,36 @@ interface ClaudeCliResult {
  * Executes Claude CLI with streaming support using secure process piping
  */
 async function executeClaudeCliWithStreaming(prompt: string, options: ClaudeCliOptions): Promise<ClaudeCliResult> {
-  const baseArgs = ['-p', prompt, '--output-format', 'stream-json', '--verbose', ...options.args];
+  const baseArgs = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'Write,Edit', ...options.args];
   const timeout = options.timeout || 300000;
 
-  // Spawn Claude CLI process
-  const claudeProcess = spawn('claude', baseArgs, {
-    stdio: ['ignore', 'pipe', 'inherit']
-  });
-  
-  // Spawn @agent-io/stream process to consume Claude's output
-  const streamProcess = spawn('npx', ['-y', '@agent-io/stream'], {
-    stdio: [claudeProcess.stdout, 'pipe', 'inherit']
-  });
+  let claudeProcess: ChildProcess;
+  let streamProcess: ChildProcess;
+  try {
+    /**
+     * Note: We use spawn() here instead of execa() because we need 
+     * direct stream piping between processes (claude -> @agent-io/stream).
+     * The spawn API allows us to pipe stdout from one process directly 
+     * to stdin of another, which is essential for streaming JSON output
+     * through the formatter. execa() is used elsewhere in the codebase
+     * for simpler command execution where we just need the final output.
+     */
+    // Spawn Claude CLI process
+    claudeProcess = spawn('claude', baseArgs, {
+      stdio: ['ignore', 'pipe', 'inherit']
+    });
+    
+    // Spawn @agent-io/stream process to consume Claude's output
+    streamProcess = spawn('npx', ['-y', '@agent-io/stream'], {
+      stdio: [claudeProcess.stdout, 'pipe', 'inherit']
+    });
+  } catch (error) {
+    return {
+      success: false,
+      error: ErrorUtils.extractErrorMessage(error),
+      method: 'failed'
+    };
+  }
   
   // Set up timeout handling
   const timeoutHandle = setTimeout(() => {
@@ -457,8 +481,8 @@ async function executeClaudeCliWithStreaming(prompt: string, options: ClaudeCliO
 /**
  * Executes Claude CLI directly without streaming
  */
-async function executeClaudeCliDirect(prompt: string, options: ClaudeCliOptions): Promise<ClaudeCliResult> {
-  const args = ['-p', prompt, ...options.args];
+export async function executeClaudeCliDirect(prompt: string, options: ClaudeCliOptions): Promise<ClaudeCliResult> {
+  const args = ['-p', prompt, '--allowedTools', 'Write,Edit', ...options.args];
   const timeout = options.timeout || 300000;
 
   try {
@@ -490,8 +514,8 @@ async function executeClaudeCliDirect(prompt: string, options: ClaudeCliOptions)
  * @returns Promise that resolves to true if successful, false if failed
  */
 async function tryClaudeCliGeneration(prompt: string, wsDir: string): Promise<boolean> {
-  // Skip Claude CLI entirely in test environment to avoid timeouts and complexity
-  if (EnvironmentUtils.isTestEnvironment()) {
+  // Skip Claude CLI in test environment unless explicitly enabled
+  if (EnvironmentUtils.isTestEnvironment() && process.env.CCWS_E2E_CLAUDE !== '1') {
     ui.info(`Test environment detected (${EnvironmentUtils.getEnvironmentDescription()}); skipping Claude CLI generation`);
     return false;
   }
