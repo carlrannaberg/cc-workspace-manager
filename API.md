@@ -31,7 +31,7 @@ Creates a complete workspace with worktrees for selected repositories.
 
 **Features:**
 - Parallel repository processing for optimal performance
-- Automatic dependency priming via hardlinks or rsync fallback
+- Automatic dependency priming via APFS clones or rsync fallback
 - Environment file copying (.env*) for configuration consistency
 - Package manager detection (npm/yarn/pnpm)
 - Comprehensive error handling with partial failure support
@@ -231,7 +231,7 @@ ccws -v
 
 ### Requirements
 
-- **macOS** - Uses cp -al for hardlinks and rsync for fallback
+- **macOS 10.13+** - Uses APFS clones (cp -c) with rsync fallback
 - **Git 2.20+** - Required for worktree support
 - **Node.js 18+** - ES modules and modern JavaScript features
 - **Claude CLI** - Must be installed and configured for CLAUDE.md generation

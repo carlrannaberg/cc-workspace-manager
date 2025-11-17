@@ -26,24 +26,27 @@ export async function primeNodeModules(src, dst) {
     if (!existsSync(srcPath)) {
         return { method: 'skipped' };
     }
-    // Try hardlink first (fast on same filesystem)
+    // Try APFS clone first (fast copy-on-write, requires macOS 10.13+ with APFS)
     try {
-        await execa('cp', ['-al', srcPath, dstPath], {
+        await execa('cp', ['-cR', srcPath, dstPath], {
             shell: false // Explicitly disable shell interpretation
         });
-        return { method: 'hardlink' };
+        return { method: 'clone' };
     }
     catch (error) {
         const errorMsg = ErrorUtils.extractErrorMessage(error);
-        // Check for specific hardlink failures and provide helpful context
+        // Check for specific clone failures and provide helpful context
         if (errorMsg.includes('Operation not permitted') || errorMsg.includes('cross-device')) {
-            ui.warning(`Hardlink failed (cross-filesystem detected), falling back to rsync...`);
+            ui.warning(`APFS clone failed (cross-filesystem detected), falling back to rsync...`);
         }
         else if (errorMsg.includes('File exists')) {
             ui.warning(`Target node_modules exists, falling back to rsync...`);
         }
+        else if (errorMsg.includes('not supported') || errorMsg.includes('Invalid argument')) {
+            ui.warning(`APFS clone not supported (requires macOS 10.13+ with APFS), falling back to rsync...`);
+        }
         else {
-            ui.warning(`Hardlink failed: ${errorMsg}, falling back to rsync...`);
+            ui.warning(`APFS clone failed: ${errorMsg}, falling back to rsync...`);
         }
     }
     // Fallback to rsync with better error reporting

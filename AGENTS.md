@@ -137,7 +137,7 @@ test('creates complete workspace', async () => {
 ## Security
 
 ### macOS-Specific Considerations
-- **Hardlink operations**: Use `cp -al` for same-filesystem performance
+- **APFS clone operations**: Use `cp -c` for copy-on-write performance (requires macOS 10.13+)
 - **Path validation**: Prevent directory traversal attacks
 - **Environment files**: Copy `.env*` files, never symlink
 - **Git isolation**: Workspace root is never a git repository
@@ -163,14 +163,14 @@ test('creates complete workspace', async () => {
 
 ### Key Design Decisions
 1. **Git worktrees** over full clones for disk efficiency
-2. **Hardlinked node_modules** for instant dependency access
+2. **APFS cloned node_modules** for instant dependency access with copy-on-write
 3. **Package manager detection** from lockfiles and package.json
 4. **macOS-first** with platform-specific optimizations
 5. **Claude CLI integration** for automatic documentation generation
 
 ### Performance Targets
 - Complete workspace creation in <60 seconds
-- Hardlink node_modules in <1 second vs 10+ for copy
+- APFS clone node_modules in <1 second vs 10+ for copy
 - Support 3+ repositories in single workspace
 
 ## Configuration
@@ -180,7 +180,7 @@ test('creates complete workspace', async () => {
 - Standard Node.js environment variables
 
 ### System Requirements
-- **macOS** (uses `cp -al`, `rsync`, `ditto`)
+- **macOS 10.13+** (uses APFS clones via `cp -c`, `rsync` fallback)
 - **Git 2.20+** for worktree support
 - **Node.js 18+** for ES modules
 - **Claude CLI** installed and configured

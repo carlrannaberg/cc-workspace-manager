@@ -68,7 +68,7 @@ Environment Variables:
   CLAUDE_CLI_ARGS       Custom flags for Claude CLI invocation
 
 Requirements:
-  - macOS (uses cp -al, rsync)
+  - macOS 10.13+ (uses APFS clones via cp -c, rsync fallback)
   - Git 2.20+ (worktree support)
   - Node.js 18+ (ES modules)
   - Claude CLI installed and configured
