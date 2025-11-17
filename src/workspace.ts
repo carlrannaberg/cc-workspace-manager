@@ -82,8 +82,8 @@ export async function createWorkspace(repoPicks: RepoPick[]): Promise<{
       const primingResult = await primeNodeModules(pick.basePath, worktreePath);
       
       // Provide feedback on priming result
-      if (primingResult.method === 'hardlink') {
-        ui.info(`Dependencies for ${pick.alias} primed via hardlink (fast)`);
+      if (primingResult.method === 'clone') {
+        ui.info(`Dependencies for ${pick.alias} primed via APFS clone (fast, copy-on-write)`);
       } else if (primingResult.method === 'rsync') {
         ui.info(`Dependencies for ${pick.alias} primed via rsync (slower)`);
       } else if (primingResult.method === 'skipped') {

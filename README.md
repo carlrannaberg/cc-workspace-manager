@@ -12,7 +12,7 @@ Quick multi-repo workspace generator for Claude Code.
 
 ## Requirements
 
-- macOS (uses cp -al, rsync)
+- macOS 10.13+ (uses APFS clones via cp -c, rsync fallback)
 - Git 2.20+ (worktree support)
 - Node.js 18+ (ES modules)
 - Claude CLI installed and configured
@@ -64,13 +64,13 @@ ccws
 1. **Discovery**: Finds git repositories in your chosen directory
 2. **Selection**: Interactive prompts for repos, aliases, and branches
 3. **Worktrees**: Creates git worktrees (shared objects, isolated working trees)
-4. **Priming**: Hardlinks node_modules for instant dependency access
+4. **Priming**: Uses APFS clones (copy-on-write) for instant dependency access
 5. **Environment**: Copies .env* files to each worktree
 6. **Integration**: Generates unified package.json and CLAUDE.md
 
 ## Performance
 
-- **Hardlinks**: node_modules copied in <1s vs 10s+ regular copy
+- **APFS Clones**: node_modules cloned in <1s vs 10s+ regular copy (copy-on-write)
 - **Worktrees**: 90% less disk usage vs full clones
 - **Parallel**: All repos start with single `npm run dev`
 
@@ -95,8 +95,8 @@ ccws-abc123/
 git worktree remove /path/to/worktree
 ```
 
-**Error: "Operation not permitted" (hardlink fails)**
-- Ensures source and destination are on same filesystem
+**Error: "Operation not permitted" (APFS clone fails)**
+- Ensures source and destination are on same APFS filesystem
 - Tool automatically falls back to rsync
 
 **Error: "Claude CLI not found"**

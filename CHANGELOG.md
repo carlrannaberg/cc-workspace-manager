@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional dependency handling for `@agent-io/stream`
 
 ### Changed
+- **BREAKING**: Replaced hardlinks (cp -al) with APFS clones (cp -c) for node_modules priming
+  - Benefits: Copy-on-write semantics allow independent modifications in workspace
+  - Requires: macOS 10.13+ (High Sierra) with APFS filesystem
+  - Fallback: rsync still available for cross-filesystem or non-APFS scenarios
 - **BREAKING**: Repository processing now runs in parallel instead of sequential
 - Improved UI messaging with clearer progress indicators and status updates
 - Enhanced error messages with specific guidance and troubleshooting tips
@@ -57,7 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release of Claude Code Workspace Manager
 - Interactive repository selection and configuration
 - Git worktree-based workspace creation
-- Automatic dependency priming via hardlinks or rsync
+- Automatic dependency priming via APFS clones or rsync
 - Environment file copying for configuration consistency
 - Package manager detection and script generation
 - CLAUDE.md generation via Claude CLI integration
@@ -65,7 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-platform support (macOS focus with extensible architecture)
 
 ### Requirements
-- macOS (uses cp -al, rsync)
+- macOS 10.13+ (uses APFS clones via cp -c, rsync fallback)
 - Git 2.20+ (worktree support)
 - Node.js 18+ (ES modules)
 - Claude CLI installed and configured
